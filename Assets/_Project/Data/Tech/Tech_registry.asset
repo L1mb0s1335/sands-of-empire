@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a37c6140675b430d82aa81d5a6212800, type: 3}
+  m_Name: Tech_registry
+  m_EditorClassIdentifier: 
+  id: registry
+  displayName: "Реестр земель"
+  branch: 3
+  order: 1
+  prerequisites:
+  - {fileID: 11400000, guid: c80701a5a4974c1f9ca12bffe21f459d, type: 2}
+  baseCost: 40
+  effect: "База земельного налога +25%"
+  downside: ""

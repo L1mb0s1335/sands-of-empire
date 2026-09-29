@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a37c6140675b430d82aa81d5a6212800, type: 3}
+  m_Name: Tech_iqta
+  m_EditorClassIdentifier: 
+  id: iqta
+  displayName: "Икта: земля за службу"
+  branch: 5
+  order: 1
+  prerequisites:
+  - {fileID: 11400000, guid: 3fd2e5957f2d4c59961f2cf0b14887ab, type: 2}
+  baseCost: 40
+  effect: "Содержание армии вдвое дешевле"
+  downside: "Знать сильна: налог на роскошь собирается вдвое хуже"
+  hidden: 0
+  revealHint: ""
+  exclusiveWith: {fileID: 11400000, guid: e321d420a98943b4a72eff1fbf931a18, type: 2}

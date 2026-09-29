@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a37c6140675b430d82aa81d5a6212800, type: 3}
+  m_Name: Tech_heavycav
+  m_EditorClassIdentifier: 
+  id: heavycav
+  displayName: "Тяжёлая конница"
+  branch: 5
+  order: 3
+  prerequisites:
+  - {fileID: 11400000, guid: 1bb869e44fd94d26b7de474329391037, type: 2}
+  baseCost: 70
+  effect: "Воины +4 к силе"
+  downside: "Содержание армии +25%; каждый Воин ест 0.5 зерна за ход со склада столицы"

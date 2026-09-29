@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f903f69c7dab45e2bad8a26af6416d7b, type: 3}
+  m_Name: Region_JerusalemKingdom
+  m_EditorClassIdentifier: 
+  id: jerusalem_kingdom
+  displayName: "Королевство крестоносцев"
+  description: "Иерусалимское королевство крестоносцев, главный противник Салах ад-Дина."
+  leaderAbility: 2
+  leaderAbilityName: "Львиное сердце"
+  leaderAbilityText: "юниты +3 к силе при атаке"
+  leaderName: "Ричард Львиное Сердце"
+  primaryColor: {r: 0.93, g: 0.91, b: 0.86, a: 1}
+  secondaryColor: {r: 0.85, g: 0.66, b: 0.18, a: 1}
+  unitStyle: 1
+  cities:
+  - {fileID: 11400000, guid: 07f470ffdb1645318c4864aa9e51f0e8, type: 2}
+  startingUnits:
+  - {fileID: 11400000, guid: d7d5a712ca2f45759cea38179026afcb, type: 2}
+  - {fileID: 11400000, guid: ae42579cab99490483d3d5f5ba11c74d, type: 2}
+  - {fileID: 11400000, guid: 90cb78ada7d74ed9909e279650bc82fa, type: 2}
+  startingGold: 20
+  cityNames:
+  - "Тир"
+  - "Сидон"
+  - "Кесария"
+  - "Бейрут"
+  - "Аскалон"
+  - "Керак"
+  - "Триполи"
+  - "Антиохия"

@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8827d3d18119410cb0b205d545cbe3e4, type: 3}
+  m_Name: Building_Smelter
+  m_EditorClassIdentifier: 
+  id: smelter
+  displayName: "Плавильня"
+  description: "Выплавляет железо из руды на дровах."
+  productionCost: 40
+  goodsCost:
+  - good: {fileID: 11400000, guid: 2745f0c1a01343358db0930e74f11dc9, type: 2}
+    amount: 4
+  - good: {fileID: 11400000, guid: 174c30a55cf940928b47e5071c17c715, type: 2}
+    amount: 6
+  storageBonus: 0
+  spoilageMultiplier: 1
+  maxPerCity: 3
+  inputs:
+  - good: {fileID: 11400000, guid: 61b26747be1944db984f6e83525694fe, type: 2}
+    amount: 2
+  - good: {fileID: 11400000, guid: 2745f0c1a01343358db0930e74f11dc9, type: 2}
+    amount: 1
+  output:
+    good: {fileID: 11400000, guid: d884c66834434a92becdeb3d1739480d, type: 2}
+    amount: 1
+  batchesPerTurn: 2
+  requiredTier: 1
+  waterBonus: 0
+  fireReduction: 0
+  crimeReduction: 0
+  epidemicReduction: 0
