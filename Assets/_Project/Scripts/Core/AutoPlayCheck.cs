@@ -150,6 +150,10 @@ namespace Runeterra.Core
                     game.ShowDiplomacy(true);
                     yield return new WaitForSeconds(0.2f);
                     yield return Shot("03i_turn30_diplomacy.png");
+                    game.SetDiplomacyTab(1);
+                    yield return new WaitForSeconds(0.2f);
+                    yield return Shot("03j_turn30_trade.png");
+                    game.SetDiplomacyTab(0);
                     game.ShowDiplomacy(false);
                     game.ShowMenu(true);
                     yield return new WaitForSeconds(0.2f);

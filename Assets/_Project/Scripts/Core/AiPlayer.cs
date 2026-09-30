@@ -49,6 +49,7 @@ namespace Runeterra.Core
         public void PlayTurn(PlayerState player)
         {
             PlayDiplomacy(player);
+            PlayForeignTrade(player);
             var plan = MakePlan(player);
             foreach (var unit in player.Units.ToList())
             {

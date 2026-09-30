@@ -16,7 +16,7 @@ namespace Runeterra.Core
     /// • Заморский рынок: чем больше вывезли товара, тем ниже там цена (восстанавливается со временем).
     /// Игрок получает пошлину с наценки каждой доставленной партии.
     /// </summary>
-    public class TradeSystem
+    public partial class TradeSystem
     {
         public const int MaxLoad = 6;
         public const float MinMarginShare = 0.25f;
@@ -104,6 +104,7 @@ namespace Runeterra.Core
             player.TariffIncomeLastTurn = 0;
             player.SmuggledLastTurn = 0;
             player.CaravansDeliveredLastTurn = 0;
+            CloseImportReport(player);
             if (_game.Season == Season.Sowing) CheckPriceCrash(player);
             foreach (var c in Caravans.Where(c => c.OwnerIndex == player.Index).ToList()) Advance(c, player);
             foreach (var good in _exportPressure.Keys.ToList()) _exportPressure[good] *= 0.9f;
@@ -133,7 +134,9 @@ namespace Runeterra.Core
         private bool DispatchBest(PlayerState player, City from)
         {
             var best = new Offer { Profit = 0f };
-            var partners = _game.Cities.Where(c => c != from && c.OwnerIndex == player.Index).ToList();
+            // Свои города и города партнёров по торговому соглашению (с рынком).
+            var partners = _game.Cities.Where(c => c != from &&
+                (c.OwnerIndex == player.Index || (c.HasMarket && CanTradeWith(player.Index, c.OwnerIndex)))).ToList();
             foreach (var good in _game.Goods)
             {
                 float reserve = good == _game.Grain ? _game.DroughtGrainNeed(from) : 2f;
@@ -149,7 +152,7 @@ namespace Runeterra.Core
                     {
                         // Торговцы не отправляют караван по дороге, которую сейчас держит враг.
                         if (path == null || (!bySea && path.Any(c => EnemyAdjacent(c, player.Index)))) continue;
-                        float sell = Price(to, good) * (1f - player.Tariff);
+                        float sell = Price(to, good) * (1f - player.Tariff - ImportDuty(to.OwnerIndex, player.Index));
                         float profit = (sell - buy - TransportCostPerStep * RouteCost(path, bySea) * good.basePrice) * amount;
                         if (sell - buy < buy * MinMarginShare || profit <= best.Profit) continue;
                         best = new Offer { Good = good, Amount = amount, To = to, Sea = bySea, Path = path, Profit = profit };
@@ -232,7 +235,11 @@ namespace Runeterra.Core
             float price;
             if (c.To != null)
             {
-                if (c.To.OwnerIndex != c.OwnerIndex) { Finish(c, false, $"город {c.To.Data.displayName} захвачен — товар пропал"); return; }
+                if (c.To.OwnerIndex != c.OwnerIndex && !CanTradeWith(c.OwnerIndex, c.To.OwnerIndex))
+                {
+                    Finish(c, false, $"граница {c.To.Data.displayName} закрыта — товар пропал");
+                    return;
+                }
                 price = Price(c.To, c.Good);
                 c.To.Warehouse.Add(c.Good, c.Amount);
             }
@@ -249,6 +256,8 @@ namespace Runeterra.Core
             float full = margin * player.Tariff * (1f - player.Debasement) * (_game.IsBankrupt(player) ? 0f : 1f);
             float smuggled = full * GameState.SmugglingShare(player.Tariff, c.To != null && _game.HasGuard(c.To));
             int tariff = (int)Math.Round(full - smuggled);
+            if (c.To != null && c.To.OwnerIndex != c.OwnerIndex)
+                CollectImportDuty(c.To.OwnerIndex, (int)Math.Round(margin * ImportDuty(c.To.OwnerIndex, c.OwnerIndex)));
             player.Gold += tariff;
             player.TariffIncomeLastTurn += tariff;
             player.SmuggledLastTurn += (int)Math.Round(smuggled);
@@ -281,12 +290,6 @@ namespace Runeterra.Core
             Finished?.Invoke(c, delivered);
             _game.Report($"Караван {c.From.Data.displayName} → {c.DestinationName}: {what}");
         }
-
-        /// <summary>Началась война между сторонами.</summary>
-        public void OnWar(int a, int b) { }
-
-        /// <summary>Прибавка к мнению сторон за ход от торговли между ними.</summary>
-        public int OpinionBonus(int a, int b) => 0;
 
         /// <summary>Сторона сошла со сцены: её караваны пропадают.</summary>
         public void RemoveOwner(int owner)

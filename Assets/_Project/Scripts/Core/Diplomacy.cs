@@ -48,6 +48,7 @@ namespace Runeterra.Core
         Peace,
         NonAggression,
         Alliance,
+        TradeAgreement,
     }
 
     /// <summary>Предложение ИИ игроку (ждёт ответа в окне «Дипломатия»).</summary>
@@ -363,6 +364,7 @@ namespace Runeterra.Core
         {
             ProposalKind.Peace => "мир",
             ProposalKind.NonAggression => "пакт о ненападении",
+            ProposalKind.TradeAgreement => "торговое соглашение",
             _ => "союз",
         };
 
@@ -380,6 +382,7 @@ namespace Runeterra.Core
                 case ProposalKind.Peace when AtWar(p.From, human): MakePeace(p.From, human); break;
                 case ProposalKind.NonAggression when CanSignPact(p.From, human) == null: SignPact(p.From, human); break;
                 case ProposalKind.Alliance when CanAlly(p.From, human) == null: Ally(p.From, human); break;
+                case ProposalKind.TradeAgreement when _game.Trade.CanSignAgreement(p.From, human) == null: _game.Trade.SignAgreement(p.From, human); break;
             }
         }
 

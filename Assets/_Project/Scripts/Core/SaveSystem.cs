@@ -43,6 +43,9 @@ namespace Runeterra.Core
             public List<RelationSave> relations = new List<RelationSave>();
             public List<ClaimSave> claims = new List<ClaimSave>();
             public List<ProposalSave> proposals = new List<ProposalSave>();
+            public List<RelationSave> agreements = new List<RelationSave>();
+            public List<RelationSave> embargoes = new List<RelationSave>();
+            public List<RelationSave> importAccum = new List<RelationSave>();
         }
 
         [Serializable] public class RelationSave
@@ -107,7 +110,7 @@ namespace Runeterra.Core
         [Serializable] public class PlayerSave
         {
             public string region;
-            public int gold, tariffIncome, reserve, landIncome, peopleIncome, luxuryIncome, smuggled;
+            public int gold, tariffIncome, importDuty, reserve, landIncome, peopleIncome, luxuryIncome, smuggled;
             public float tariff, landTax, peopleTax, luxuryTax, debasement;
             public int debt, missedPayments, interestLastTurn, bankruptUntil, stigmaUntil;
             public List<string> techs = new List<string>();
@@ -193,7 +196,7 @@ namespace Runeterra.Core
             {
                 var ps = new PlayerSave
                 {
-                    region = p.Region.id, gold = p.Gold, tariff = p.Tariff, tariffIncome = p.TariffIncomeLastTurn,
+                    region = p.Region.id, gold = p.Gold, tariff = p.Tariff, tariffIncome = p.TariffIncomeLastTurn, importDuty = p.ImportDutyLastTurn,
                     landTax = p.LandTax, peopleTax = p.PeopleTax, luxuryTax = p.LuxuryTax, reserve = p.Reserve,
                     landIncome = p.LandIncome, peopleIncome = p.PeopleIncome, luxuryIncome = p.LuxuryIncome, smuggled = p.SmuggledLastTurn,
                     debasement = p.Debasement, debt = p.Debt, missedPayments = p.MissedPayments, interestLastTurn = p.InterestLastTurn,
@@ -259,6 +262,9 @@ namespace Runeterra.Core
                 .Select(x => new RelationSave { a = x.key.Item1, b = x.key.Item2, value = x.rel.Value, stance = (int)x.rel.Stance, until = x.rel.Until, since = x.rel.Since })
                 .ToList();
             d.claims = s.Diplomacy.Claims.Select(c => new ClaimSave { owner = c.Owner, city = c.CityId, ready = c.ReadyTurn, historical = c.Historical }).ToList();
+            d.agreements = s.Trade.Agreements.OrderBy(x => x).Select(x => new RelationSave { a = x.Item1, b = x.Item2 }).ToList();
+            d.embargoes = s.Trade.EmbargoSet.OrderBy(x => x).Select(x => new RelationSave { a = x.Item1, b = x.Item2 }).ToList();
+            d.importAccum = s.Trade.ImportAccum.OrderBy(x => x.Key).Select(x => new RelationSave { a = x.Key, value = x.Value }).ToList();
             d.proposals = s.Diplomacy.Proposals.Select(p => new ProposalSave { from = p.From, kind = (int)p.Kind, turn = p.Turn }).ToList();
             return d;
         }
@@ -365,7 +371,7 @@ namespace Runeterra.Core
                 var ps = d.players[i];
                 var p = s.Players[i];
                 if (p.Region.id != ps.region) throw new InvalidDataException($"регион {i}: ожидался {ps.region}, на карте {p.Region.id}");
-                p.Gold = ps.gold; p.Tariff = ps.tariff; p.TariffIncomeLastTurn = ps.tariffIncome;
+                p.Gold = ps.gold; p.Tariff = ps.tariff; p.TariffIncomeLastTurn = ps.tariffIncome; p.ImportDutyLastTurn = ps.importDuty;
                 p.LandTax = ps.landTax; p.PeopleTax = ps.peopleTax; p.LuxuryTax = ps.luxuryTax; p.Reserve = ps.reserve;
                 p.LandIncome = ps.landIncome; p.PeopleIncome = ps.peopleIncome; p.LuxuryIncome = ps.luxuryIncome; p.SmuggledLastTurn = ps.smuggled;
                 p.Debasement = ps.debasement; p.Debt = ps.debt; p.MissedPayments = ps.missedPayments; p.InterestLastTurn = ps.interestLastTurn;
@@ -407,6 +413,9 @@ namespace Runeterra.Core
                 s.Diplomacy.Set(r.a, r.b, new Relation { Value = r.value, Stance = (Stance)r.stance, Until = r.until, Since = r.since });
             foreach (var c in d.claims)
                 s.Diplomacy.Claims.Add(new Claim { Owner = c.owner, CityId = c.city, ReadyTurn = c.ready, Historical = c.historical });
+            foreach (var x in d.agreements) s.Trade.Agreements.Add((x.a, x.b));
+            foreach (var x in d.embargoes) s.Trade.EmbargoSet.Add((x.a, x.b));
+            foreach (var x in d.importAccum) s.Trade.ImportAccum[x.a] = x.value;
             foreach (var p in d.proposals)
                 s.Diplomacy.Proposals.Add(new Proposal { From = p.from, Kind = (ProposalKind)p.kind, Turn = p.turn });
 

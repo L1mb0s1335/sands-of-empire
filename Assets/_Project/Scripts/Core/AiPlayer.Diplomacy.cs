@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 using Runeterra.Cities;
+using Runeterra.Economy;
+using Runeterra.Units;
 
 namespace Runeterra.Core
 {
@@ -85,6 +88,53 @@ namespace Runeterra.Core
             SeekTreaties(player);
         }
 
+        // ---------- Торговля с другими странами ----------
+
+        /// <summary>
+        /// Торговая политика ИИ: соглашения с теми, к кому не враждебен; эмбарго против заклятых врагов;
+        /// покупка у соседей недостающих стратегических товаров (кони, соль, стекло).
+        /// </summary>
+        private void PlayForeignTrade(PlayerState player)
+        {
+            var t = _game.Trade;
+            var d = _game.Diplomacy;
+            int me = player.Index;
+            foreach (var other in _game.Players.Where(p => p.Index != me && !_game.IsEliminated(p)))
+            {
+                int o = other.Index;
+                int opinion = d.Opinion(me, o);
+                if (!t.Embargoes(me, o) && opinion <= -60 && !d.AtWar(me, o)) t.SetEmbargo(me, o, true);
+                else if (t.Embargoes(me, o) && opinion > -30) t.SetEmbargo(me, o, false);
+                if (t.CanSignAgreement(me, o) == null && opinion >= 0 && Rng.NextDouble() < 0.25)
+                {
+                    if (other.IsHuman) d.Propose(me, o, ProposalKind.TradeAgreement);
+                    else if (Accepts(o, me, ProposalKind.TradeAgreement)) t.SignAgreement(me, o);
+                }
+            }
+
+            var capital = _game.CapitalOf(player);
+            if (capital == null) return;
+            foreach (var good in NeededGoods(player))
+            {
+                if (capital.Warehouse.Get(good) >= 4) continue;
+                var seller = _game.Players.Where(p => p.Index != me && !p.IsHuman && t.CanBuy(me, p.Index, good) == null && t.SellerAgrees(p.Index, me, good))
+                    .OrderBy(p => t.DealBuyCost(p.Index, good)).FirstOrDefault();
+                if (seller != null && player.Gold >= t.DealBuyCost(seller.Index, good) + 40) t.Buy(me, seller.Index, good);
+            }
+        }
+
+        /// <summary>Стратегические товары, без которых стоят найм или постройки.</summary>
+        private IEnumerable<GoodData> NeededGoods(PlayerState player)
+        {
+            var needed = new HashSet<GoodData>();
+            if (WantsArmy(player))
+                foreach (var u in _shop.Where(u => u.role != UnitRole.Civilian))
+                    foreach (var g in u.goodsCost) if (g.good != null) needed.Add(g.good);
+            foreach (var b in _buildings.Where(b => b.epidemicReduction > 0))
+                foreach (var g in b.goodsCost) if (g.good != null && g.good.fromDeposit) needed.Add(g.good);
+            return needed;
+        }
+
         private void OfferPeace(int me, int enemy)
         {
             var d = _game.Diplomacy;
@@ -125,6 +175,8 @@ namespace Runeterra.Core
                 case ProposalKind.Peace:
                     if (d.CanMakePeace(who, from) != null) return false;
                     return BlocStrength(who) < BlocStrength(from) * 1.5f || d.WarTurns(who, from) >= 20;
+                case ProposalKind.TradeAgreement:
+                    return _game.Trade.CanSignAgreement(who, from) == null && d.Opinion(who, from) >= -10;
                 case ProposalKind.NonAggression:
                     if (d.CanSignPact(who, from) != null) return false;
                     // Не связываем себе руки, если сами готовим войну против них.
@@ -147,6 +199,7 @@ namespace Runeterra.Core
             {
                 case ProposalKind.Peace: d.MakePeace(human, ai); break;
                 case ProposalKind.NonAggression: d.SignPact(human, ai); break;
+                case ProposalKind.TradeAgreement: _game.Trade.SignAgreement(human, ai); break;
                 default: d.Ally(human, ai); break;
             }
             return true;

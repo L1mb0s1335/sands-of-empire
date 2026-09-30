@@ -16,6 +16,8 @@ namespace Runeterra.Core
         public float Tariff { get; set; } = 0.1f;
         /// <summary>Пошлины, собранные за последний ход.</summary>
         public int TariffIncomeLastTurn { get; set; }
+        /// <summary>Ввозные пошлины с иностранных караванов за последний круг ходов.</summary>
+        public int ImportDutyLastTurn { get; set; }
 
         // ---------- Налоги и казна ----------
 
