@@ -149,10 +149,13 @@ namespace Runeterra.Core
             int grain = State.Grain == null ? 0
                 : Mathf.FloorToInt(Cities.Where(c => c.OwnerIndex == human.Index).Sum(c => c.Warehouse.Get(State.Grain)));
 
-            x = Resource(x, "gold", Hex("f0c870"), $"{human.Gold} <color={(income >= 0 ? LGood : LBad)}>{Signed(income)}</color>",
-                $"золото · армия −{State.Tech.ArmyUpkeep(human)}",
-                $"Казна {human.Gold}, доход {Signed(income)} за ход, содержание армии −{State.Tech.ArmyUpkeep(human)}.\n" +
-                $"Налоги {Signed(Taxes(human))} за ход · караванов в пути: {State.Trade.CountOf(human)}");
+            int army = State.Tech.ArmyUpkeep(human), buildings = State.BuildingUpkeep(human);
+            int net = income + Taxes(human) - army - buildings;
+            x = Resource(x, "gold", Hex("f0c870"), $"{human.Gold} <color={(net >= 0 ? LGood : LBad)}>{Signed(net)}</color>",
+                $"золото · содержание −{army + buildings}",
+                $"Казна {human.Gold}. Доход городов {Signed(income)}, налоги и пошлины {Signed(Taxes(human))} за ход.\n" +
+                $"Содержание: армия −{army}, постройки −{buildings}. Итог {Signed(net)} за ход.\n" +
+                $"Караванов в пути: {State.Trade.CountOf(human)}");
             x = Resource(x, "science", Hex("8fd8f0"), $"+{State.Tech.Science(human)}", "знания за ход", $"Знания +{State.Tech.Science(human)} за ход.\n{research}");
             x = Resource(x, "grain", Hex("e8cf7a"), $"{grain}", "зерно на складах", "Зерно на складах ваших городов. В засуху города проедают его.");
             x = Resource(x, "reserve", Hex("d9b07a"), $"{human.Reserve}", "резерв",
@@ -384,7 +387,9 @@ namespace Runeterra.Core
             StatCard(new Rect(x + (cw + gap) * 2, cy, cw, ch), "food", Signed(State.CityFood(city)), "еда",
                 grow > 0 ? $"{city.FoodStock}/{State.GrowthThreshold(city)} · рост {grow} х." : $"<color={CBad}>рост остановлен</color>",
                 $"Запас еды {city.FoodStock}/{State.GrowthThreshold(city)}" + (grow > 0 ? $", рост через {grow} х." : ", рост остановлен"));
-            StatCard(new Rect(x + (cw + gap) * 3, cy, cw, ch), "prod", $"+{State.CityProduction(city)}", "производство", $"золото +{State.CityGold(city)}");
+            StatCard(new Rect(x + (cw + gap) * 3, cy, cw, ch), "prod", $"+{State.CityProduction(city)}", "производство",
+                $"золото +{State.CityGold(city)} · содерж. −{State.CityUpkeep(city)}",
+                $"Производство +{State.CityProduction(city)}. Золото города +{State.CityGold(city)} за ход, содержание построек −{State.CityUpkeep(city)}.");
             bool blockade = State.IsBlockaded(city);
             StatCard(new Rect(x + (cw + gap) * 4, cy, cw, ch), "walls", $"{city.Walls}/{City.MaxWalls}", "стены",
                 blockade ? $"<color={CBad}>блокада</color>" : $"сила {State.CityStrength(city)}",
@@ -497,7 +502,8 @@ namespace Runeterra.Core
                 bool canBuild = State.CanBuild(city, item, out var reason);
                 GUI.enabled = canBuild;
                 var count = item.Building != null && city.Count(item.Building) > 0 ? $" ×{city.Count(item.Building)}" : "";
-                var label = (item.Is(city.CurrentBuild) ? $"<color={CGold}>» </color>" : "") + $"<b>{item.Name}</b>{count} · {State.TurnsToBuild(city, item)} х." +
+                var upkeep = item.Building != null && item.Building.upkeep > 0 ? $" · −{item.Building.upkeep} зол./х." : "";
+                var label = (item.Is(city.CurrentBuild) ? $"<color={CGold}>» </color>" : "") + $"<b>{item.Name}</b>{count} · {State.TurnsToBuild(city, item)} х.{upkeep}" +
                             (canBuild ? "" : $" <size={Sz(11)}>({reason})</size>");
                 if (GUI.Button(R(new Rect(0, y, colW, rowH - 4)), label, Row)) State.SetBuild(city, item);
                 if (item.Unit != null)

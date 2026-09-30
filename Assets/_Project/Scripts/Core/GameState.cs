@@ -203,6 +203,12 @@ namespace Runeterra.Core
             return player.Epochs.Contains(TechSystem.EpochTrade) ? (int)Math.Round(sum * 1.1f) : sum;
         }
 
+        /// <summary>Содержание построек города за ход.</summary>
+        public int CityUpkeep(City city) => city.Buildings.Sum(kv => kv.Key.upkeep * kv.Value);
+
+        /// <summary>Содержание всех построек стороны за ход (рынок и порт — районы, они бесплатны).</summary>
+        public int BuildingUpkeep(PlayerState player) => Cities.Where(c => c.OwnerIndex == player.Index).Sum(CityUpkeep);
+
         /// <summary>Золото города за ход (за вычетом краж).</summary>
         public int CityGold(City city) =>
             CityIncome + city.Population / 2 + (city.HasMarket && Market != null ? Market.goldPerTurn + (OwnerOf(city).Has("markets") ? 1 : 0) : 0) +

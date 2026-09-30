@@ -21,6 +21,8 @@ namespace Runeterra.Economy
         [Min(0)] public int productionCost = 40;
         [Tooltip("Товары со склада города, которые уходят на постройку")]
         public List<GoodAmount> goodsCost = new List<GoodAmount>();
+        [Tooltip("Содержание золотом за ход (у мастерских 0: они сами приносят доход)")]
+        [Min(0)] public int upkeep;
 
         [Header("Склад")]
         [Tooltip("Прибавка к вместимости склада по каждому товару")]

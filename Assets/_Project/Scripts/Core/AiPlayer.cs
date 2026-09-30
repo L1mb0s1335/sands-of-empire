@@ -121,7 +121,7 @@ namespace Runeterra.Core
                     item = new BuildItem(building);
                 else if (WantsArmy(player))
                     item = new BuildItem(NextMilitary(player, city));
-                else if (_buildings.FirstOrDefault(b => _game.CanBuild(city, new BuildItem(b), out _)) is BuildingData any)
+                else if (_buildings.FirstOrDefault(b => _game.CanBuild(city, new BuildItem(b), out _) && AffordsUpkeep(player, b)) is BuildingData any)
                     item = new BuildItem(any);
                 _game.SetBuild(city, item);
             }
@@ -135,20 +135,22 @@ namespace Runeterra.Core
         {
             Runeterra.Economy.BuildingData best = null;
             float bestScore = 0f;
+            var owner = _game.Players[city.OwnerIndex];
+            bool CanBuild(Runeterra.Economy.BuildingData b) => _game.CanBuild(city, new BuildItem(b), out _) && AffordsUpkeep(owner, b);
             // Вода: если её мало (или вот-вот станет мало) — колодец/цистерна/канал.
             if (_game.WaterUse(city) + 1f > _game.WaterCapacity(city))
             {
-                var water = _buildings.Where(b => b.waterBonus > 0 && _game.CanBuild(city, new BuildItem(b), out _))
+                var water = _buildings.Where(b => b.waterBonus > 0 && CanBuild(b))
                     .OrderByDescending(b => b.waterBonus).FirstOrDefault();
                 if (water != null) return water;
             }
             // Беды большого города.
-            if (_game.CrimeRate(city) >= 0.1f && _buildings.FirstOrDefault(b => b.crimeReduction > 0 && _game.CanBuild(city, new BuildItem(b), out _)) is BuildingData guard) return guard;
-            if (_game.EpidemicChance(city) >= 0.03f && _buildings.FirstOrDefault(b => b.epidemicReduction > 0 && _game.CanBuild(city, new BuildItem(b), out _)) is BuildingData med) return med;
+            if (_game.CrimeRate(city) >= 0.1f && _buildings.FirstOrDefault(b => b.crimeReduction > 0 && CanBuild(b)) is BuildingData guard) return guard;
+            if (_game.EpidemicChance(city) >= 0.03f && _buildings.FirstOrDefault(b => b.epidemicReduction > 0 && CanBuild(b)) is BuildingData med) return med;
 
             foreach (var b in _buildings)
             {
-                if (!_game.CanBuild(city, new BuildItem(b), out _)) continue;
+                if (!CanBuild(b)) continue;
                 if (b.waterBonus > 0 || b.crimeReduction > 0 || b.epidemicReduction > 0 || b.fireReduction > 0) continue;
                 if (!b.IsWorkshop) return b; // амбар и прочие хозяйственные — в первую очередь
                 if (city.FreeWorkers <= 0) continue; // некому работать
@@ -207,6 +209,14 @@ namespace Runeterra.Core
             if (player.Gold > 3 * SurplusGold) { player.Tariff = 0f; player.LuxuryTax = 0f; }
             if (player.Reserve < 30 && player.Gold >= 70) { player.Gold -= 10; player.Reserve += 10; }
 
+            // Казна в минусе или тает без запаса — поднимаем налоги (дорогие постройки отсекает AffordsUpkeep).
+            if (player.Gold < 0 || (player.Gold < 100 && NetIncome(player) < 0))
+            {
+                player.LandTax = 0.1f;
+                player.PeopleTax = 0.1f;
+                player.LuxuryTax = 0.1f;
+            }
+
             // Займы: берём, когда враг у ворот, а казна пуста; возвращаем при избытке золота.
             bool threatened = _game.Cities.Where(c => c.OwnerIndex == player.Index).Any(c =>
                 _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
@@ -215,6 +225,15 @@ namespace Runeterra.Core
             if (threatened && player.Gold < 40 && (rating == 'A' || rating == 'B')) _game.Borrow(player);
             else if (!threatened && player.Debt > 0 && player.Gold > 120) _game.Repay(player);
         }
+
+        /// <summary>Доход стороны за ход за вычетом содержания армии и построек (налоги и пошлины — по прошлому ходу).</summary>
+        private int NetIncome(PlayerState p) =>
+            _game.IncomeOf(p) + p.LandIncome + p.PeopleIncome + p.LuxuryIncome + p.TariffIncomeLastTurn -
+            _game.Tech.ArmyUpkeep(p) - _game.BuildingUpkeep(p);
+
+        /// <summary>Потянет ли казна содержание постройки: доход после неё остаётся в плюсе.</summary>
+        private bool AffordsUpkeep(PlayerState p, Runeterra.Economy.BuildingData b) =>
+            b.upkeep == 0 || (p.Gold >= 0 && NetIncome(p) - b.upkeep >= 2);
 
         /// <summary>Выше этой суммы золото в мирное время считается лишним.</summary>
         public const int SurplusGold = 300;

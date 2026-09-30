@@ -99,6 +99,7 @@ namespace Runeterra.Core
             CheckCarriers(p);
             CheckEpochs(p);
 
+            p.Gold -= _game.BuildingUpkeep(p);
             int upkeep = ArmyUpkeep(p);
             p.Gold -= upkeep;
             p.ArmyUpkeepLastTurn = upkeep;

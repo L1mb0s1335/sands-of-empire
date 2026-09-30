@@ -21,6 +21,7 @@ MonoBehaviour:
     amount: 2
   - good: {fileID: 11400000, guid: 174c30a55cf940928b47e5071c17c715, type: 2}
     amount: 8
+  upkeep: 1
   storageBonus: 0
   spoilageMultiplier: 1
   maxPerCity: 2

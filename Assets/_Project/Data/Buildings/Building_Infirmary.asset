@@ -27,6 +27,7 @@ MonoBehaviour:
     amount: 2
   - good: {fileID: 11400000, guid: acdfa34f3c828bbafb7a32c42e6f7351, type: 2}
     amount: 1
+  upkeep: 2
   storageBonus: 0
   spoilageMultiplier: 1
   requiredTier: 3
