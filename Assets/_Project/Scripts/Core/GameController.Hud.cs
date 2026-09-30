@@ -57,6 +57,7 @@ namespace Runeterra.Core
             if (_showMenu && _menuConfirm != 0) _menuConfirm = 0;
             else if (_showMenu) _showMenu = false;
             else if (_showTech) _showTech = false;
+            else if (_showDiplomacy) _showDiplomacy = false;
             else if (_showUnits) _showUnits = false;
             else if (_showTreasury) _showTreasury = false;
             else if (_selectedCity != null && _cityTab != 0) _cityTab = 0;
@@ -114,6 +115,7 @@ namespace Runeterra.Core
             if (_showTreasury) DrawTreasury(human);
             if (_showUnits) DrawUnitList(human);
             if (_showTech) DrawTechTree(human);
+            if (_showDiplomacy) DrawDiplomacy(human);
             if (_showMenu) DrawMenu();
             DrawTooltip();
         }
@@ -232,6 +234,12 @@ namespace Runeterra.Core
                 _showTreasury = !_showTreasury;
             int ready = human.Units.Count(u => u.MovesLeft > 0);
             if (SideButton(new Vector2(62, 322), "units", "Юниты (U)", $"{human.Units.Count} · ходят {ready}", _showUnits, -1f)) _showUnits = !_showUnits;
+            var d = State.Diplomacy;
+            int wars = d.EnemiesOf(human.Index).Count(), offers = d.Proposals.Count;
+            string diplo = offers > 0 ? $"<color={LGold}>предложений: {offers}</color>"
+                : wars > 0 ? $"<color={LBad}>войн: {wars}</color>"
+                : Turns.Turn <= Diplomacy.StartTruceTurns && !d.WarsDisabled ? $"перемирие до х. {Diplomacy.StartTruceTurns}" : "мир";
+            if (SideButton(new Vector2(62, 412), "diplomacy", "Дипломатия (G)", diplo, _showDiplomacy, -1f)) _showDiplomacy = !_showDiplomacy;
         }
 
         /// <summary>Шестиугольная бронзовая кнопка с табличкой. progress ≥ 0 — кольцо прогресса.</summary>

@@ -282,6 +282,12 @@ namespace Runeterra.Core
             _game.Report($"Караван {c.From.Data.displayName} → {c.DestinationName}: {what}");
         }
 
+        /// <summary>Началась война между сторонами.</summary>
+        public void OnWar(int a, int b) { }
+
+        /// <summary>Прибавка к мнению сторон за ход от торговли между ними.</summary>
+        public int OpinionBonus(int a, int b) => 0;
+
         /// <summary>Сторона сошла со сцены: её караваны пропадают.</summary>
         public void RemoveOwner(int owner)
         {

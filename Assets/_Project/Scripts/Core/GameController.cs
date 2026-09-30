@@ -103,7 +103,13 @@ namespace Runeterra.Core
             CityWallsBar.IsShown = c => State.Vision.IsExplored(_human, c.Coord);
             State.UnitCreated += u => UnitView.Create(u, map, Players[u.OwnerIndex].Region, map.baseMaterial);
             State.CityChanged += OnCityChanged;
-            State.Message += m => _lastMessage = m;
+            State.Message += m =>
+            {
+                _lastMessage = m;
+                if (AutoPlayCheck.Active && (m.Contains("войн") || m.Contains("Мир:") || m.Contains("претензи") || m.Contains("пакт") ||
+                                             m.Contains("союз") || m.Contains("захватывает") || m.Contains("сходит со сцены")))
+                    Debug.Log($"[DIPLO] ход {Turns.Turn}: {m}");
+            };
             State.CityShot += (city, target) => StartCoroutine(CityShotAnimation(city, target));
             State.CityFounded += city =>
             {
@@ -132,6 +138,7 @@ namespace Runeterra.Core
                 OnCityChanged(city);
             }
             foreach (var p in players) SpawnStartingUnits(p);
+            State.Diplomacy.Setup();
             Turns.PlayerTurnStarted += p => { if (p.IsHuman && Winner == null) SelectNextUnit(); };
 
             map.ShowDeposits(goods);
@@ -300,6 +307,7 @@ namespace Runeterra.Core
             if (Input.GetKeyDown(KeyCode.T)) _showTreasury = !_showTreasury;
             if (Input.GetKeyDown(KeyCode.Y)) _showTech = !_showTech;
             if (Input.GetKeyDown(KeyCode.U)) _showUnits = !_showUnits;
+            if (Input.GetKeyDown(KeyCode.G)) _showDiplomacy = !_showDiplomacy;
             if (Input.GetKeyDown(KeyCode.Escape) && !escUsed) { Select(null); _selectedCity = null; }
             if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return)) EndTurn();
 
@@ -512,7 +520,12 @@ namespace Runeterra.Core
         /// <summary>Сыграть текущий ход игрока логикой ИИ (для автопроверки сборки).</summary>
         public void AutoPlayHumanTurn()
         {
-            if (Winner == null && Turns.Current.IsHuman) _ai.PlayTurn(Turns.Current);
+            if (Winner == null && Turns.Current.IsHuman)
+            {
+                foreach (var p in State.Diplomacy.Proposals.ToList())
+                    State.Diplomacy.Answer(p, Turns.Current.Index, _ai.Accepts(Turns.Current.Index, p.From, p.Kind));
+                _ai.PlayTurn(Turns.Current);
+            }
             AfterAction();
         }
     }

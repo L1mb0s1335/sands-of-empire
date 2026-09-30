@@ -13,7 +13,7 @@ namespace Runeterra.Core
     /// Армия: каждый боевой юнит идёт к ближайшему юниту или городу противника и атакует,
     /// лучники стреляют с дистанции, разведчики занимают пустые города.
     /// </summary>
-    public class AiPlayer
+    public partial class AiPlayer
     {
         private readonly GameState _game;
         private readonly List<UnitData> _shop;
@@ -48,6 +48,7 @@ namespace Runeterra.Core
 
         public void PlayTurn(PlayerState player)
         {
+            PlayDiplomacy(player);
             var plan = MakePlan(player);
             foreach (var unit in player.Units.ToList())
             {
@@ -70,9 +71,11 @@ namespace Runeterra.Core
             var army = player.Units.Where(u => u.IsAlive && GameState.CanFight(u)).ToList();
             var capital = _game.CapitalOf(player);
             var home = capital?.Coord ?? (army.Count > 0 ? army[0].Coord : default);
-            // ИИ знает только те вражеские города, которые разведал.
-            var target = _game.Cities.Where(c => c.OwnerIndex != player.Index && _game.Vision.IsExplored(player.Index, c.Coord))
-                .OrderBy(c => c.IsCapital ? 0 : 1).ThenBy(c => c.Coord.DistanceTo(home)).FirstOrDefault();
+            // Цель — города тех, с кем идёт война: сначала город по претензии, затем ближайший разведанный.
+            bool atWar = _game.Diplomacy.EnemiesOf(player.Index).Any();
+            var claimed = new HashSet<string>(_game.Diplomacy.Claims.Where(c => c.Owner == player.Index).Select(c => c.CityId));
+            var target = _game.Cities.Where(c => _game.AtWar(c.OwnerIndex, player.Index) && _game.Vision.IsExplored(player.Index, c.Coord))
+                .OrderBy(c => claimed.Contains(c.Data.id) ? 0 : 1).ThenBy(c => c.Coord.DistanceTo(home)).FirstOrDefault();
 
             // Наступаем, когда армия собрана у столицы; при больших потерях — отходим и копим силы.
             // Собранной считаем армию, если у столицы стоит не меньше 3 и хотя бы половина юнитов
@@ -82,11 +85,11 @@ namespace Runeterra.Core
                 _attacking.Add(player.Index);
             if (army.Count < 2) _attacking.Remove(player.Index);
 
-            // Цели не видно — армия идёт разведывать ближайшую неизвестную землю.
-            var explore = target == null ? _game.Vision.Frontier(player.Index, army.Count > 0 ? army[0].Coord : home) : null;
+            // Войны нет — армия стоит дома. Цель войны не видна — идём разведывать.
+            var explore = atWar && target == null ? _game.Vision.Frontier(player.Index, army.Count > 0 ? army[0].Coord : home) : null;
             return new Plan
             {
-                Attacking = _attacking.Contains(player.Index) && (target != null || explore != null),
+                Attacking = atWar && _attacking.Contains(player.Index) && (target != null || explore != null),
                 Target = target,
                 Explore = explore,
             };
@@ -112,8 +115,10 @@ namespace Runeterra.Core
                     item = new BuildItem(_game.Port);
                 else if (ChooseBuilding(city) is BuildingData building)
                     item = new BuildItem(building);
-                else
+                else if (WantsArmy(player))
                     item = new BuildItem(NextMilitary(player));
+                else if (_buildings.FirstOrDefault(b => _game.CanBuild(city, new BuildItem(b), out _)) is BuildingData any)
+                    item = new BuildItem(any);
                 _game.SetBuild(city, item);
             }
         }
@@ -185,7 +190,7 @@ namespace Runeterra.Core
 
             // Займы: берём, когда враг у ворот, а казна пуста; возвращаем при избытке золота.
             bool threatened = _game.Cities.Where(c => c.OwnerIndex == player.Index).Any(c =>
-                _game.Players.Where(p => p.Index != player.Index).SelectMany(p => p.Units)
+                _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
                     .Any(u => u.IsAlive && u.MeleeStrength > 0 && u.Coord.DistanceTo(c.Coord) <= 4 && _game.Vision.IsVisible(player.Index, u.Coord)));
             char rating = _game.CreditRating(player);
             if (threatened && player.Gold < 40 && (rating == 'A' || rating == 'B')) _game.Borrow(player);
@@ -197,7 +202,7 @@ namespace Runeterra.Core
         {
             foreach (var city in _game.Cities.Where(c => c.OwnerIndex == player.Index).ToList())
             {
-                bool threat = _game.Players.Where(p => p.Index != player.Index).SelectMany(p => p.Units)
+                bool threat = _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
                     .Any(u => u.IsAlive && u.MeleeStrength > 0 && u.Coord.DistanceTo(city.Coord) <= 2 && _game.Vision.IsVisible(player.Index, u.Coord));
                 bool defended = player.Units.Any(u => u.IsAlive && GameState.CanFight(u) && u.Coord.DistanceTo(city.Coord) <= 1);
                 if (threat && !defended && city.Population >= 3) _game.Draft(city, player);
@@ -226,6 +231,7 @@ namespace Runeterra.Core
 
             foreach (var city in _game.Cities.Where(c => c.OwnerIndex == player.Index).ToList())
             {
+                if (!WantsArmy(player)) break;
                 var want = NextMilitary(player);
                 // Армию, которую не прокормить, не покупаем: доход должен покрывать содержание.
                 // Исключение — большой запас золота: его хватит на содержание надолго.
@@ -254,7 +260,7 @@ namespace Runeterra.Core
             var settlerData = settler?.Data ?? _shop.FirstOrDefault(d => d.canFoundCity);
             if (settlerData == null) return null;
             var probe = settler ?? new Unit(settlerData, player.Index, from);
-            var enemyCities = _game.Cities.Where(c => c.OwnerIndex != player.Index && _game.Vision.IsExplored(player.Index, c.Coord)).ToList();
+            var enemyCities = _game.Cities.Where(c => c.OwnerIndex != player.Index).ToList();
             HexCoord? best = null;
             float bestScore = float.MinValue;
             foreach (var tile in _game.Grid.Tiles)
@@ -354,14 +360,14 @@ namespace Runeterra.Core
 
         private void PlayMilitary(Unit unit, PlayerState player, Plan plan)
         {
-            var enemyCities = _game.Cities.Where(c => c.OwnerIndex != player.Index && _game.Vision.IsExplored(player.Index, c.Coord)).ToList();
+            var enemyCities = _game.Cities.Where(c => _game.AtWar(c.OwnerIndex, player.Index) && _game.Vision.IsExplored(player.Index, c.Coord)).ToList();
             if (!GameState.CanFight(unit))
             {
                 PlayScout(unit, player, enemyCities);
                 return;
             }
 
-            var enemyUnits = _game.Players.Where(p => p.Index != player.Index).SelectMany(p => p.Units)
+            var enemyUnits = _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
                 .Where(u => u.IsAlive && _game.Vision.IsVisible(player.Index, u.Coord)).Select(u => u.Coord).ToList();
 
             // 1. Цель в досягаемости — бьём самую раненую.

@@ -628,6 +628,13 @@ namespace Runeterra.Core
                 float cross = Mathf.Min(RoundBox(p - V(0f, -0.05f), V(0.09f, 0.55f), 0f), RoundBox(p - V(0f, -0.2f), V(0.45f, 0.09f), 0f));
                 return Mathf.Max(d, -cross);
             },
+            "diplomacy" => p =>
+            {
+                // Свиток с печатью.
+                float scroll = RoundBox(p - V(-0.1f, -0.1f), V(0.62f, 0.72f), 0.1f);
+                scroll = Mathf.Max(scroll, -Mathf.Min(RoundBox(p - V(-0.1f, -0.35f), V(0.4f, 0.05f), 0f), RoundBox(p - V(-0.1f, -0.1f), V(0.4f, 0.05f), 0f)));
+                return Mathf.Min(scroll, Circle(p, V(0.45f, 0.5f), 0.32f));
+            },
             "star" => StarSdf,
             "people" => p => Mathf.Min(Circle(p, V(0f, -0.45f), 0.3f), RoundBox(p - V(0f, 0.52f), V(0.62f, 0.36f), 0.32f)),
             "water" => p => Mathf.Min(Circle(p, V(0f, 0.28f), 0.52f), Polygon(p, new[] { V(0f, -0.9f), V(0.47f, 0.08f), V(-0.47f, 0.08f) })),

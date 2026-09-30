@@ -28,7 +28,7 @@ namespace Runeterra.Core
 
         [Serializable] public class SaveData
         {
-            public int version = 1;
+            public int version = 2;
             public int mapRadius, seed;
             public int turn, currentIndex;
             public int winner = -1;
@@ -40,6 +40,26 @@ namespace Runeterra.Core
             public List<GoodAmount> exportPressure = new List<GoodAmount>();
             public List<YearExportSave> yearExport = new List<YearExportSave>();
             public List<int> aiAttacking = new List<int>();
+            public List<RelationSave> relations = new List<RelationSave>();
+            public List<ClaimSave> claims = new List<ClaimSave>();
+            public List<ProposalSave> proposals = new List<ProposalSave>();
+        }
+
+        [Serializable] public class RelationSave
+        {
+            public int a, b, value, stance, until, since;
+        }
+
+        [Serializable] public class ClaimSave
+        {
+            public int owner, ready;
+            public string city;
+            public bool historical;
+        }
+
+        [Serializable] public class ProposalSave
+        {
+            public int from, kind, turn;
         }
 
         [Serializable] public class TileSave
@@ -235,6 +255,11 @@ namespace Runeterra.Core
             d.yearExport = s.Trade.YearExport.OrderBy(kv => kv.Key.Item1).ThenBy(kv => kv.Key.Item2.id)
                 .Select(kv => new YearExportSave { owner = kv.Key.Item1, good = kv.Key.Item2.id, amount = kv.Value }).ToList();
             d.aiAttacking = ai.Attacking.OrderBy(x => x).ToList();
+            d.relations = s.Diplomacy.All.OrderBy(x => x.key.Item1).ThenBy(x => x.key.Item2)
+                .Select(x => new RelationSave { a = x.key.Item1, b = x.key.Item2, value = x.rel.Value, stance = (int)x.rel.Stance, until = x.rel.Until, since = x.rel.Since })
+                .ToList();
+            d.claims = s.Diplomacy.Claims.Select(c => new ClaimSave { owner = c.Owner, city = c.CityId, ready = c.ReadyTurn, historical = c.Historical }).ToList();
+            d.proposals = s.Diplomacy.Proposals.Select(p => new ProposalSave { from = p.From, kind = (int)p.Kind, turn = p.Turn }).ToList();
             return d;
         }
 
@@ -378,6 +403,12 @@ namespace Runeterra.Core
             foreach (var e in d.yearExport)
                 if (Good(e.good) is GoodData g) s.Trade.YearExport[(e.owner, g)] = e.amount;
             ai.Attacking.UnionWith(d.aiAttacking);
+            foreach (var r in d.relations)
+                s.Diplomacy.Set(r.a, r.b, new Relation { Value = r.value, Stance = (Stance)r.stance, Until = r.until, Since = r.since });
+            foreach (var c in d.claims)
+                s.Diplomacy.Claims.Add(new Claim { Owner = c.owner, CityId = c.city, ReadyTurn = c.ready, Historical = c.historical });
+            foreach (var p in d.proposals)
+                s.Diplomacy.Proposals.Add(new Proposal { From = p.from, Kind = (ProposalKind)p.kind, Turn = p.turn });
 
             s.Turns.Restore(d.turn, d.currentIndex);
             s.Restore(d.winner >= 0 ? d.winner : (int?)null, d.gameOverText, d.turn);

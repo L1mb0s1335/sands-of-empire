@@ -27,6 +27,28 @@ namespace Runeterra.Core
         public TradeSystem Trade { get; }
         public TechSystem Tech { get; }
         public Visibility Vision { get; }
+        public Diplomacy Diplomacy { get; }
+
+        /// <summary>Стороны воюют (только тогда можно атаковать, захватывать, грабить караваны).</summary>
+        public bool AtWar(int a, int b) => Diplomacy.AtWar(a, b);
+
+        /// <summary>Началась война: хук для торговли (разрыв соглашений).</summary>
+        internal void OnWarStarted(int a, int b) => Trade.OnWar(a, b);
+
+        internal void OnPeaceMade(int a, int b) { }
+
+        /// <summary>Идущие войны одной строкой (для журнала автопроверки).</summary>
+        public string WarSummary()
+        {
+            var wars = new List<string>();
+            foreach (var a in Players)
+            foreach (var b in Players.Where(p => p.Index > a.Index))
+                if (AtWar(a.Index, b.Index)) wars.Add($"{a.Index}-{b.Index}");
+            return wars.Count == 0 ? "нет" : string.Join(",", wars);
+        }
+
+        /// <summary>Как торговля между сторонами влияет на их мнение за ход.</summary>
+        internal int TradeOpinion(int a, int b) => Trade.OpinionBonus(a, b);
 
         private PlayerState OwnerOf(City city) => Players[city.OwnerIndex];
         private Random _random;
@@ -84,9 +106,11 @@ namespace Runeterra.Core
             Trade = new TradeSystem(this, grid.Seed);
             Tech = new TechSystem(this, techs);
             Vision = new Visibility(this);
+            Diplomacy = new Diplomacy(this);
             _random = new Random(grid.Seed * 31 + 7);
             Turns = new TurnManager(players, aiTurn);
             Turns.PlayerTurnStarted += BeginPlayerTurn;
+            Turns.NewTurnStarted += t => Diplomacy.NewTurn(t);
         }
 
         // ---------- Запросы ----------
@@ -97,7 +121,15 @@ namespace Runeterra.Core
         public Unit VisibleEnemyAt(HexCoord c, int ownerIndex) =>
             Vision.IsVisible(ownerIndex, c) ? EnemyAt(c, ownerIndex) : null;
 
+        /// <summary>Юнит стороны, с которой идёт война.</summary>
         public Unit EnemyAt(HexCoord c, int ownerIndex)
+        {
+            var u = UnitAt(c);
+            return u != null && u.OwnerIndex != ownerIndex && AtWar(u.OwnerIndex, ownerIndex) ? u : null;
+        }
+
+        /// <summary>Чужой юнит (любой стороны) — через него пройти нельзя.</summary>
+        public Unit ForeignAt(HexCoord c, int ownerIndex)
         {
             var u = UnitAt(c);
             return u != null && u.OwnerIndex != ownerIndex ? u : null;
@@ -898,9 +930,17 @@ namespace Runeterra.Core
         /// </summary>
         public Func<HexCoord, bool> BlockedFor(Unit unit, HexCoord? allowGoal = null) => c =>
             (allowGoal == null || c != allowGoal.Value) &&
-            (EnemyAt(c, unit.OwnerIndex) != null || (IsEnemyCity(c, unit.OwnerIndex) && (!unit.Data.canCapture || CityAt(c).Walls > 0)));
+            (ForeignAt(c, unit.OwnerIndex) != null || (IsForeignCity(c, unit.OwnerIndex) &&
+                (!IsEnemyCity(c, unit.OwnerIndex) || !unit.Data.canCapture || CityAt(c).Walls > 0)));
 
+        /// <summary>Город стороны, с которой идёт война.</summary>
         public bool IsEnemyCity(HexCoord c, int ownerIndex)
+        {
+            var city = CityAt(c);
+            return city != null && city.OwnerIndex != ownerIndex && AtWar(city.OwnerIndex, ownerIndex);
+        }
+
+        public bool IsForeignCity(HexCoord c, int ownerIndex)
         {
             var city = CityAt(c);
             return city != null && city.OwnerIndex != ownerIndex;
@@ -941,7 +981,7 @@ namespace Runeterra.Core
             if (path.Count == 0) return;
             unit.MoveAlong(Grid, path, c => IsEnemyCity(c, unit.OwnerIndex) || (stopAt != null && stopAt(c)));
             var city = CityAt(unit.Coord);
-            if (city != null && city.OwnerIndex != unit.OwnerIndex && unit.Data.canCapture && city.Walls == 0)
+            if (city != null && IsEnemyCity(city.Coord, unit.OwnerIndex) && unit.Data.canCapture && city.Walls == 0)
                 Capture(city, unit.OwnerIndex);
         }
 
@@ -970,6 +1010,7 @@ namespace Runeterra.Core
             var newRegion = Players[newOwner].Region;
             city.OwnerIndex = newOwner;
             city.ResetWallsAfterCapture();
+            Diplomacy.AddOpinion(oldOwner, newOwner, -20);
             // При штурме гибнет половина мастеров, у выживших стаж сгорает наполовину.
             foreach (var list in city.Masters.Values)
             {
@@ -1022,7 +1063,7 @@ namespace Runeterra.Core
 
         /// <summary>Блокада: вражеский боевой юнит в 2 клетках от города — стены не чинятся.</summary>
         public bool IsBlockaded(City city) =>
-            Players.Where(p => p.Index != city.OwnerIndex).SelectMany(p => p.Units)
+            Players.Where(p => AtWar(p.Index, city.OwnerIndex)).SelectMany(p => p.Units)
                 .Any(u => u.IsAlive && CanFight(u) && u.Coord.DistanceTo(city.Coord) <= 2);
 
         public int CityStrength(City city)
@@ -1038,7 +1079,7 @@ namespace Runeterra.Core
         public City DefendedEnemyCity(HexCoord c, int ownerIndex)
         {
             var city = CityAt(c);
-            return city != null && city.OwnerIndex != ownerIndex && city.Walls > 0 ? city : null;
+            return city != null && city.OwnerIndex != ownerIndex && AtWar(city.OwnerIndex, ownerIndex) && city.Walls > 0 ? city : null;
         }
 
         public static bool CanFight(Unit unit) => unit.Data.IsRanged || Combat.CanAttackAtAll(unit);
@@ -1156,7 +1197,7 @@ namespace Runeterra.Core
         {
             foreach (var city in Cities.Where(c => c.OwnerIndex == player.Index && c.Walls > 0).ToList())
             {
-                var target = Players.Where(p => p.Index != player.Index).SelectMany(p => p.Units)
+                var target = Players.Where(p => AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
                     .Where(u => u.IsAlive && u.Coord.DistanceTo(city.Coord) <= City.Range)
                     .OrderBy(u => u.Health).FirstOrDefault();
                 if (target == null) continue;
@@ -1227,7 +1268,7 @@ namespace Runeterra.Core
             for (int d = 0; d < 6; d++)
             {
                 var c = city.Coord.Neighbor(d);
-                if (IsFreeLand(c) && !IsEnemyCity(c, city.OwnerIndex)) return c;
+                if (IsFreeLand(c) && !IsForeignCity(c, city.OwnerIndex)) return c;
             }
             return null;
         }

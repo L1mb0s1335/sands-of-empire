@@ -14,12 +14,16 @@ namespace Runeterra.Core
     {
         private string _outDir;
 
+        /// <summary>Идёт автопроверка (журнал дипломатии пишется в лог).</summary>
+        public static bool Active { get; private set; }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
             var args = System.Environment.GetCommandLineArgs();
             int i = System.Array.IndexOf(args, "-autoplay");
             if (i < 0) return;
+            Active = true;
             var go = new GameObject("AutoPlayCheck");
             DontDestroyOnLoad(go);
             var check = go.AddComponent<AutoPlayCheck>();
@@ -143,6 +147,10 @@ namespace Runeterra.Core
                     yield return new WaitForSeconds(0.2f);
                     yield return Shot("03d_turn30_units.png");
                     game.ShowUnitList(false);
+                    game.ShowDiplomacy(true);
+                    yield return new WaitForSeconds(0.2f);
+                    yield return Shot("03i_turn30_diplomacy.png");
+                    game.ShowDiplomacy(false);
                     game.ShowMenu(true);
                     yield return new WaitForSeconds(0.2f);
                     yield return Shot("03h_turn30_menu.png");
@@ -158,7 +166,9 @@ namespace Runeterra.Core
                 game.EndTurn();
                 yield return null;
                 Debug.Log($"[AUTOPLAY] turn {game.Turns.Turn}: units " +
-                          string.Join(" / ", System.Linq.Enumerable.Select(game.Turns.Players, p => $"{p.Region.displayName}={p.Units.Count}")));
+                          string.Join(" / ", System.Linq.Enumerable.Select(game.Turns.Players, p => $"{p.Region.displayName}={p.Units.Count}")) +
+                          $" | cities {string.Join("/", System.Linq.Enumerable.Select(game.Turns.Players, p => System.Linq.Enumerable.Count(game.Cities, c => c.OwnerIndex == p.Index)))}" +
+                          $" | wars {game.State.WarSummary()}"); 
             }
             Time.timeScale = 1f;
             while (game.Busy) yield return null;
