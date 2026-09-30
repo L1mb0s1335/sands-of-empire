@@ -81,6 +81,18 @@ namespace Runeterra.Core
         public List<Claim> Claims { get; } = new List<Claim>();
         public List<Proposal> Proposals { get; } = new List<Proposal>();
 
+        /// <summary>Коалиция против сильнейшего: против кого (-1 — нет) и кто в ней.</summary>
+        public int CoalitionTarget { get; internal set; } = -1;
+        public HashSet<int> Coalition { get; } = new HashSet<int>();
+
+        public bool InCoalition(int a) => CoalitionTarget >= 0 && Coalition.Contains(a);
+
+        /// <summary>Обе стороны в коалиции — союз заключается при меньшем мнении.</summary>
+        public int AllianceOpinionFor(int a, int b) => InCoalition(a) && InCoalition(b) ? 10 : AllianceOpinion;
+
+        public bool SameFaith(int a, int b) =>
+            Christian.Contains(_game.Players[a].Region.id) == Christian.Contains(_game.Players[b].Region.id);
+
         /// <summary>Сценарий без войн: объявить войну нельзя никому.</summary>
         public bool WarsDisabled { get; set; }
 
@@ -294,6 +306,7 @@ namespace Runeterra.Core
             Proposals.RemoveAll(p => p.Kind == ProposalKind.Peace && (p.From == a || p.From == b));
             _game.Report($"Мир: {Name(a)} и {Name(b)} заключают перемирие на {TruceTurns} ходов");
             _game.OnPeaceMade(a, b);
+            _game.Trade.ClearRouteCache();
             Changed?.Invoke();
         }
 
@@ -323,7 +336,7 @@ namespace Runeterra.Core
             var r = Get(a, b);
             if (r.Stance == Stance.War) return "идёт война";
             if (r.Stance == Stance.Alliance) return "уже союзники";
-            if (r.Value < AllianceOpinion) return $"мнение ниже {AllianceOpinion}";
+            if (r.Value < AllianceOpinionFor(a, b)) return $"мнение ниже {AllianceOpinionFor(a, b)}";
             if (EnemiesOf(a).Any(e => Allied(e, b)) || EnemiesOf(b).Any(e => Allied(e, a))) return "союзник врага";
             return null;
         }
@@ -386,6 +399,47 @@ namespace Runeterra.Core
             }
         }
 
+        // ---------- Коалиция против сильнейшего ----------
+
+        public const int CoalitionFrom = 30;
+        public const float CoalitionRatio = 1.5f;
+
+        /// <summary>
+        /// Если одна сторона мощнее среднего остальных в 1.5 раза (и у неё не меньше 5 городов),
+        /// ИИ-стороны, не связанные с ней союзом, складываются в коалицию: мнение о ней падает каждый ход,
+        /// союзы между участниками заключаются легче, войну с ней начинают при меньшем перевесе.
+        /// Распадается, когда перевес падает ниже 1.3.
+        /// </summary>
+        private void UpdateCoalition(int turn)
+        {
+            if (WarsDisabled || turn < CoalitionFrom) return;
+            var alive = _game.Players.Where(p => !_game.IsEliminated(p)).ToList();
+            if (alive.Count < 3) { Dissolve(); return; }
+            var scores = alive.ToDictionary(p => p.Index, p => _game.PowerScore(p.Index));
+            var top = alive.OrderByDescending(p => scores[p.Index]).First();
+            float avg = (float)alive.Where(p => p != top).Average(p => scores[p.Index]);
+            int topCities = _game.Cities.Count(c => c.OwnerIndex == top.Index);
+
+            if (CoalitionTarget >= 0 && (CoalitionTarget != top.Index || scores[top.Index] < avg * 1.3f)) Dissolve();
+            if (CoalitionTarget < 0 && scores[top.Index] >= avg * CoalitionRatio && topCities >= 5)
+            {
+                CoalitionTarget = top.Index;
+                _game.Report($"Коалиция против сильнейшего: соседи объединяются против {Name(top.Index)}");
+            }
+            if (CoalitionTarget < 0) return;
+            Coalition.Clear();
+            foreach (var p in alive)
+                if (p.Index != CoalitionTarget && !p.IsHuman && !Allied(p.Index, CoalitionTarget)) Coalition.Add(p.Index);
+        }
+
+        private void Dissolve()
+        {
+            if (CoalitionTarget < 0) return;
+            _game.Report($"Коалиция против {Name(CoalitionTarget)} распалась");
+            CoalitionTarget = -1;
+            Coalition.Clear();
+        }
+
         // ---------- Ход ----------
 
         /// <summary>Новый ход: сроки договоров, дрейф мнений, устаревшие предложения.</summary>
@@ -410,6 +464,8 @@ namespace Runeterra.Core
                 delta += _game.TradeOpinion(kv.Key.Item1, kv.Key.Item2);
                 r.Value = Math.Max(-100, Math.Min(100, r.Value + delta));
             }
+            UpdateCoalition(turn);
+            foreach (int m in Coalition) AddOpinion(m, CoalitionTarget, -1);
             if (turn == StartTruceTurns + 1) _game.Report("Стартовое перемирие окончено: войну можно объявить по созревшей претензии");
             Proposals.RemoveAll(p => turn - p.Turn > 2);
             Claims.RemoveAll(c => CityById(c.CityId) == null);

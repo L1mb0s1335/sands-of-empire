@@ -102,12 +102,17 @@ namespace Runeterra.Core
             CaravanView.IsShown = c => c.OwnerIndex == _human || State.Vision.IsVisible(_human, c.Coord);
             CityWallsBar.IsShown = c => State.Vision.IsExplored(_human, c.Coord);
             State.UnitCreated += u => UnitView.Create(u, map, Players[u.OwnerIndex].Region, map.baseMaterial);
-            State.CityChanged += OnCityChanged;
+            // Облик города перестраивается раз в кадр: за ход ИИ город может меняться много раз.
+            State.CityChanged += c =>
+            {
+                _dirtyCities.Add(c);
+                if (_selectedCity == c && c.OwnerIndex != Turns.Current.Index) _selectedCity = null;
+            };
             State.Message += m =>
             {
                 _lastMessage = m;
                 if (AutoPlayCheck.Active && (m.Contains("войн") || m.Contains("Мир:") || m.Contains("претензи") || m.Contains("пакт") ||
-                                             m.Contains("союз") || m.Contains("захватывает") || m.Contains("сходит со сцены")))
+                                             m.Contains("союз") || m.Contains("оалиц") || m.Contains("разрывает") || m.Contains("захватывает") || m.Contains("сходит со сцены")))
                     Debug.Log($"[DIPLO] ход {Turns.Turn}: {m}");
             };
             State.CityShot += (city, target) => StartCoroutine(CityShotAnimation(city, target));
@@ -254,6 +259,15 @@ namespace Runeterra.Core
                 .transform.SetParent(map.transform, true);
 
         private static string CityLabel(City city) => (city.IsCapital ? "★ " : "") + $"{city.Data.displayName}  {city.Population}";
+
+        private readonly HashSet<City> _dirtyCities = new HashSet<City>();
+
+        private void LateUpdate()
+        {
+            if (_dirtyCities.Count == 0) return;
+            foreach (var c in _dirtyCities.ToList()) OnCityChanged(c);
+            _dirtyCities.Clear();
+        }
 
         private void OnCityChanged(City city)
         {
@@ -507,12 +521,17 @@ namespace Runeterra.Core
 
         // ---------- Ходы ----------
 
+        /// <summary>Сколько миллисекунд заняли ходы ИИ после последнего «Конца хода» игрока.</summary>
+        public long LastAiRoundMs { get; private set; }
+
         public void EndTurn()
         {
             if (Winner != null) return;
             Select(null);
             _selectedCity = null;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             Turns.EndTurn();
+            LastAiRoundMs = sw.ElapsedMilliseconds;
         }
 
         public void Restart() => UnityEngine.SceneManagement.SceneManager.LoadScene(gameObject.scene.name);

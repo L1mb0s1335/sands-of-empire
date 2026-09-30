@@ -172,7 +172,7 @@ namespace Runeterra.Core
                 Debug.Log($"[AUTOPLAY] turn {game.Turns.Turn}: units " +
                           string.Join(" / ", System.Linq.Enumerable.Select(game.Turns.Players, p => $"{p.Region.displayName}={p.Units.Count}")) +
                           $" | cities {string.Join("/", System.Linq.Enumerable.Select(game.Turns.Players, p => System.Linq.Enumerable.Count(game.Cities, c => c.OwnerIndex == p.Index)))}" +
-                          $" | wars {game.State.WarSummary()}"); 
+                          $" | wars {game.State.WarSummary()} | ai {game.LastAiRoundMs} ms | {Perf.Dump()}");
             }
             Time.timeScale = 1f;
             while (game.Busy) yield return null;

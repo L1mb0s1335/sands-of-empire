@@ -43,6 +43,8 @@ namespace Runeterra.Core
             public List<RelationSave> relations = new List<RelationSave>();
             public List<ClaimSave> claims = new List<ClaimSave>();
             public List<ProposalSave> proposals = new List<ProposalSave>();
+            public int coalitionTarget = -1;
+            public List<int> coalition = new List<int>();
             public List<RelationSave> agreements = new List<RelationSave>();
             public List<RelationSave> embargoes = new List<RelationSave>();
             public List<RelationSave> importAccum = new List<RelationSave>();
@@ -265,6 +267,8 @@ namespace Runeterra.Core
             d.agreements = s.Trade.Agreements.OrderBy(x => x).Select(x => new RelationSave { a = x.Item1, b = x.Item2 }).ToList();
             d.embargoes = s.Trade.EmbargoSet.OrderBy(x => x).Select(x => new RelationSave { a = x.Item1, b = x.Item2 }).ToList();
             d.importAccum = s.Trade.ImportAccum.OrderBy(x => x.Key).Select(x => new RelationSave { a = x.Key, value = x.Value }).ToList();
+            d.coalitionTarget = s.Diplomacy.CoalitionTarget;
+            d.coalition = s.Diplomacy.Coalition.OrderBy(x => x).ToList();
             d.proposals = s.Diplomacy.Proposals.Select(p => new ProposalSave { from = p.From, kind = (int)p.Kind, turn = p.Turn }).ToList();
             return d;
         }
@@ -416,6 +420,8 @@ namespace Runeterra.Core
             foreach (var x in d.agreements) s.Trade.Agreements.Add((x.a, x.b));
             foreach (var x in d.embargoes) s.Trade.EmbargoSet.Add((x.a, x.b));
             foreach (var x in d.importAccum) s.Trade.ImportAccum[x.a] = x.value;
+            s.Diplomacy.CoalitionTarget = d.coalitionTarget;
+            s.Diplomacy.Coalition.UnionWith(d.coalition);
             foreach (var p in d.proposals)
                 s.Diplomacy.Proposals.Add(new Proposal { From = p.from, Kind = (ProposalKind)p.kind, Turn = p.turn });
 

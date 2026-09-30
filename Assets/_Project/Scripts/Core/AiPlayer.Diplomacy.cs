@@ -7,9 +7,10 @@ using Runeterra.Units;
 namespace Runeterra.Core
 {
     /// <summary>
-    /// Дипломатия ИИ: войну объявляет только по созревшей претензии и при перевесе сил,
-    /// претензии создаёт на города слабых соседей, затяжную или проигрышную войну заканчивает миром,
-    /// с соседями, к которым расположен, заключает пакты и союзы.
+    /// Дипломатия ИИ по характеру страны (<see cref="AiPersonality"/>): войну объявляет только по созревшей претензии,
+    /// выждав и набрав нужный характеру перевес; претензии заявляет прежде всего на город своей цели и на сильнейшего
+    /// (коалиция); затяжную или проигрышную войну заканчивает миром; с соседями заключает пакты и союзы;
+    /// правитель с низким доверием рвёт пакт, чтобы напасть.
     /// </summary>
     public partial class AiPlayer
     {
@@ -17,21 +18,30 @@ namespace Runeterra.Core
 
         private System.Random Rng => _diploRandom ??= new System.Random(_game.Grid.Seed * 17 + 3);
 
-        /// <summary>Военная сила стороны: сумма сил боевых юнитов и по 10 за город.</summary>
-        public int Strength(int player) =>
-            _game.Players[player].Units.Where(u => u.IsAlive && GameState.CanFight(u)).Sum(u => u.Data.IsRanged ? u.RangedStrength : u.MeleeStrength) +
-            10 * _game.Cities.Count(c => c.OwnerIndex == player);
+        private readonly Dictionary<int, AiPersonality> _personalities = new Dictionary<int, AiPersonality>();
+
+        /// <summary>Характер ИИ стороны.</summary>
+        public AiPersonality Personality(int player)
+        {
+            if (!_personalities.TryGetValue(player, out var p))
+                _personalities[player] = p = AiPersonality.For(_game.Players[player].Region.id);
+            return p;
+        }
+
+        public int Strength(int player) => _game.MilitaryStrength(player);
 
         /// <summary>Сила стороны вместе с союзниками.</summary>
         private int BlocStrength(int player) => Strength(player) + _game.Diplomacy.AlliesOf(player).Sum(Strength);
 
-        /// <summary>Сколько боевых юнитов держать: в мире — гарнизоны, при войне или её подготовке — больше.</summary>
+        /// <summary>Сколько боевых юнитов держать: зависит от войны, её подготовки и характера.</summary>
         private int ArmyTarget(PlayerState player)
         {
+            var ch = Personality(player.Index);
             int cities = _game.Cities.Count(c => c.OwnerIndex == player.Index);
-            if (_game.Diplomacy.EnemiesOf(player.Index).Any()) return cities * 4 + 4;
-            if (_game.Diplomacy.ClaimsOf(player.Index).Any()) return cities * 3 + 2;
-            return (int)(cities * 1.5f) + 2;
+            if (_game.Diplomacy.EnemiesOf(player.Index).Any()) return (int)(cities * (3f + 2f * ch.Aggression)) + 3;
+            bool preparing = _game.Diplomacy.ClaimsOf(player.Index).Any() || _game.Diplomacy.CoalitionTarget == player.Index;
+            if (preparing) return (int)(cities * (1.8f + ch.Aggression + ch.Caution * 0.5f)) + 2;
+            return (int)(cities * (0.8f + ch.Aggression * 0.6f + ch.Caution * 0.6f - ch.Development * 0.3f)) + 2;
         }
 
         private bool WantsArmy(PlayerState player) =>
@@ -41,6 +51,14 @@ namespace Runeterra.Core
         {
             var d = _game.Diplomacy;
             int me = player.Index;
+            var ch = Personality(me);
+            int turn = _game.Turns.Turn;
+
+            // Набожность: раз в 5 ходов теплеет к единоверцам и холодеет к иноверцам.
+            if (ch.Piety >= 0.7f && turn % 5 == me % 5)
+                foreach (var other in _game.Players.Where(p => p.Index != me))
+                    d.AddOpinion(me, other.Index, d.SameFaith(me, other.Index) ? 1 : -1);
+
             if (d.WarsDisabled)
             {
                 SeekTreaties(player);
@@ -52,37 +70,51 @@ namespace Runeterra.Core
             {
                 if (d.CanMakePeace(me, enemy) != null) continue;
                 int turns = d.WarTurns(me, enemy);
-                bool losing = BlocStrength(me) * 1.1f < BlocStrength(enemy);
-                bool tired = turns >= 20;
-                if (!(losing && turns >= 6) && !tired) continue;
+                bool losing = BlocStrength(me) * (1f + 0.3f * ch.Caution) < BlocStrength(enemy);
+                bool tired = turns >= 10 + (int)(25 * ch.Aggression);
+                bool lostCities = _game.Cities.Any(c => c.FounderIndex == me && c.OwnerIndex == enemy);
+                if (!(losing && turns >= 5) && !tired && !(lostCities && ch.Caution > 0.6f && turns >= 5)) continue;
                 OfferPeace(me, enemy);
             }
 
-            // 2. Война по созревшей претензии, если перевес явный и воевать больше не с кем.
-            if (!d.EnemiesOf(me).Any())
+            // 2. Война по созревшей претензии: не раньше срока характера, при нужном перевесе.
+            if (!d.EnemiesOf(me).Any() && turn >= ch.EarliestWar)
             {
-                foreach (var claim in d.ClaimsOf(me).Where(d.IsRipe).ToList())
+                foreach (var claim in d.ClaimsOf(me).Where(d.IsRipe).OrderBy(c => c.CityId == ch.GoalCity ? 0 : 1).ToList())
                 {
                     var city = d.CityById(claim.CityId);
                     int target = city.OwnerIndex;
+                    bool coalition = d.InCoalition(me) && d.CoalitionTarget == target;
+                    float ratio = ch.WarRatio - (coalition ? 0.3f : 0f) - (claim.CityId == ch.GoalCity ? 0.1f : 0f);
+                    if (d.Opinion(me, target) > 20 + (int)(30 * ch.Aggression)) continue;
+                    if (BlocStrength(me) < BlocStrength(target) * ratio) continue;
+                    // Вероломный правитель рвёт пакт, чтобы через ход напасть.
+                    if (d.StanceOf(me, target) == Stance.NonAggression && ch.Trust < 0.45f && BlocStrength(me) >= BlocStrength(target) * (ratio + 0.3f))
+                    {
+                        d.BreakTreaty(me, target);
+                        break;
+                    }
                     if (d.CanDeclareWar(me, target) != null) continue;
-                    if (d.Opinion(me, target) > 30) continue;
-                    if (Strength(me) < BlocStrength(target) * 1.3f) continue;
                     d.DeclareWar(me, target);
                     break;
                 }
             }
 
-            // 3. Новая претензия: на город слабого нелюбимого соседа, если своих претензий нет.
-            if (_game.Turns.Turn > 8 && !d.ClaimsOf(me).Any() && !d.EnemiesOf(me).Any() && Rng.NextDouble() < 0.12)
+            // 3. Новая претензия: город цели, иначе город сильнейшего (коалиция), иначе слабого нелюбимого соседа.
+            if (turn > 8 && !d.EnemiesOf(me).Any() && d.ClaimsOf(me).Count() < 2 && Rng.NextDouble() < ch.ClaimChance &&
+                player.Gold >= Diplomacy.ClaimCost + 40)
             {
                 var mine = _game.Cities.Where(c => c.OwnerIndex == me).ToList();
-                var pick = _game.Cities.Where(c => c.OwnerIndex != me && d.CanFabricate(me, c) == null &&
-                                                   d.StanceOf(me, c.OwnerIndex) != Stance.Alliance && d.Opinion(me, c.OwnerIndex) < 10)
-                    .OrderBy(c => Strength(c.OwnerIndex) + d.Opinion(me, c.OwnerIndex))
+                var goal = ch.GoalCity != null ? d.CityById(ch.GoalCity) : null;
+                City pick = goal != null && d.CanFabricate(me, goal) == null && d.StanceOf(me, goal.OwnerIndex) != Stance.Alliance ? goal : null;
+                pick ??= _game.Cities.Where(c => c.OwnerIndex != me && d.CanFabricate(me, c) == null &&
+                                                 d.StanceOf(me, c.OwnerIndex) != Stance.Alliance &&
+                                                 (d.Opinion(me, c.OwnerIndex) < 10 || (d.InCoalition(me) && d.CoalitionTarget == c.OwnerIndex)))
+                    .OrderBy(c => d.InCoalition(me) && d.CoalitionTarget == c.OwnerIndex ? 0 : 1)
+                    .ThenBy(c => Strength(c.OwnerIndex) + d.Opinion(me, c.OwnerIndex))
                     .ThenBy(c => mine.Min(m => m.Coord.DistanceTo(c.Coord)))
                     .FirstOrDefault();
-                if (pick != null && player.Gold >= Diplomacy.ClaimCost + 40) d.Fabricate(me, pick);
+                if (pick != null) d.Fabricate(me, pick);
             }
 
             SeekTreaties(player);
@@ -103,9 +135,11 @@ namespace Runeterra.Core
             {
                 int o = other.Index;
                 int opinion = d.Opinion(me, o);
-                if (!t.Embargoes(me, o) && opinion <= -60 && !d.AtWar(me, o)) t.SetEmbargo(me, o, true);
-                else if (t.Embargoes(me, o) && opinion > -30) t.SetEmbargo(me, o, false);
-                if (t.CanSignAgreement(me, o) == null && opinion >= 0 && Rng.NextDouble() < 0.25)
+                var ch = Personality(me);
+                int embargoAt = -80 + (int)(40 * (1f - ch.Trade));
+                if (!t.Embargoes(me, o) && opinion <= embargoAt && !d.AtWar(me, o)) t.SetEmbargo(me, o, true);
+                else if (t.Embargoes(me, o) && opinion > embargoAt + 30) t.SetEmbargo(me, o, false);
+                if (t.CanSignAgreement(me, o) == null && opinion >= 10 - (int)(30 * ch.Trade) && Rng.NextDouble() < 0.1 + 0.3 * ch.Trade)
                 {
                     if (other.IsHuman) d.Propose(me, o, ProposalKind.TradeAgreement);
                     else if (Accepts(o, me, ProposalKind.TradeAgreement)) t.SignAgreement(me, o);
@@ -142,18 +176,22 @@ namespace Runeterra.Core
             else if (Accepts(enemy, me, ProposalKind.Peace)) d.MakePeace(me, enemy);
         }
 
-        /// <summary>Пакты с соседями, к которым расположен; союз при высоком мнении.</summary>
+        /// <summary>Пакты с соседями, к которым расположен; союз при высоком мнении (в коалиции — легче).</summary>
         private void SeekTreaties(PlayerState player)
         {
             var d = _game.Diplomacy;
             int me = player.Index;
-            if (Rng.NextDouble() > 0.2) return;
+            var ch = Personality(me);
+            if (Rng.NextDouble() > 0.1 + 0.25 * ch.Caution) return;
             foreach (var other in _game.Players.Where(p => p.Index != me && !_game.IsEliminated(p)).OrderByDescending(p => d.Opinion(me, p.Index)))
             {
                 int o = other.Index;
                 if (d.ClaimsOf(me).Any(c => d.CityById(c.CityId).OwnerIndex == o)) continue;
-                ProposalKind? kind = d.CanAlly(me, o) == null && d.Opinion(me, o) >= Diplomacy.AllianceOpinion + 10 ? ProposalKind.Alliance
-                    : d.StanceOf(me, o) == Stance.Peace && d.CanSignPact(me, o) == null && d.Opinion(me, o) >= 0 ? ProposalKind.NonAggression
+                if (d.CoalitionTarget == o && d.InCoalition(me)) continue;
+                if (ch.GoalCity != null && d.CityById(ch.GoalCity)?.OwnerIndex == o && ch.Aggression >= 0.5f) continue;
+                int allyAt = d.AllianceOpinionFor(me, o) + (int)(20 * (0.5f - ch.Trust));
+                ProposalKind? kind = d.CanAlly(me, o) == null && d.Opinion(me, o) >= allyAt ? ProposalKind.Alliance
+                    : d.StanceOf(me, o) == Stance.Peace && d.CanSignPact(me, o) == null && d.Opinion(me, o) >= 10 - (int)(20 * ch.Caution) ? ProposalKind.NonAggression
                     : (ProposalKind?)null;
                 if (kind == null) continue;
                 if (other.IsHuman) d.Propose(me, o, kind.Value);
@@ -166,23 +204,27 @@ namespace Runeterra.Core
             }
         }
 
-        /// <summary>Согласится ли ИИ-сторона who на предложение стороны from.</summary>
+        /// <summary>Согласится ли ИИ-сторона who на предложение стороны from (по своему характеру).</summary>
         public bool Accepts(int who, int from, ProposalKind kind)
         {
             var d = _game.Diplomacy;
+            var ch = Personality(who);
             switch (kind)
             {
                 case ProposalKind.Peace:
                     if (d.CanMakePeace(who, from) != null) return false;
-                    return BlocStrength(who) < BlocStrength(from) * 1.5f || d.WarTurns(who, from) >= 20;
+                    return BlocStrength(who) < BlocStrength(from) * (1.2f + 0.6f * (1f - ch.Aggression)) ||
+                           d.WarTurns(who, from) >= 10 + (int)(25 * ch.Aggression);
                 case ProposalKind.TradeAgreement:
-                    return _game.Trade.CanSignAgreement(who, from) == null && d.Opinion(who, from) >= -10;
+                    return _game.Trade.CanSignAgreement(who, from) == null && d.Opinion(who, from) >= -(int)(30 * ch.Trade);
                 case ProposalKind.NonAggression:
                     if (d.CanSignPact(who, from) != null) return false;
-                    // Не связываем себе руки, если сами готовим войну против них.
-                    return !d.ClaimsOf(who).Any(c => d.CityById(c.CityId).OwnerIndex == from);
+                    // Не связываем себе руки, если сами готовим войну против них или это цель коалиции.
+                    if (d.ClaimsOf(who).Any(c => d.CityById(c.CityId).OwnerIndex == from)) return false;
+                    if (d.InCoalition(who) && d.CoalitionTarget == from) return false;
+                    return d.Opinion(who, from) >= -10 - (int)(20 * ch.Caution);
                 default:
-                    return d.CanAlly(who, from) == null && d.Opinion(who, from) >= Diplomacy.AllianceOpinion;
+                    return d.CanAlly(who, from) == null && d.Opinion(who, from) >= d.AllianceOpinionFor(who, from) + (int)(20 * (0.5f - ch.Trust));
             }
         }
 

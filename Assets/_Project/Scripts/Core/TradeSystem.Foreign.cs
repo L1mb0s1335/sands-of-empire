@@ -101,6 +101,7 @@ namespace Runeterra.Core
         /// <summary>Война рвёт торговлю: соглашение расторгнуто, караваны конфискованы.</summary>
         public void OnWar(int a, int b)
         {
+            ClearRouteCache();
             CancelAgreement(a, b, "война");
             ConfiscateBetween(a, b, "война");
         }

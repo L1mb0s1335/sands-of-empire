@@ -65,6 +65,9 @@ namespace Runeterra.Core
                 : $"Войну можно объявить только по созревшей претензии на город соперника (своя — {Diplomacy.ClaimCost} золота, зреет {Diplomacy.ClaimMaturity} х.). " +
                   (Turns.Turn <= Diplomacy.StartTruceTurns ? $"<b>Стартовое перемирие до хода {Diplomacy.StartTruceTurns}.</b> " : "") +
                   "Союзники вступают в оборонительную войну. Мир — перемирие на 10 ходов.";
+            if (d.CoalitionTarget >= 0)
+                rules += $"\n<color={CBad}><b>Коалиция против {Players[d.CoalitionTarget].Region.displayName}</b></color>: " +
+                         string.Join(", ", d.Coalition.Select(i => Players[i].Region.displayName));
             Label(new Rect(r.x + pad, y, r.width - pad * 2, 40), rules, BodySmall);
             y += 44;
 
@@ -95,8 +98,13 @@ namespace Runeterra.Core
                 int cities = Cities.Count(c => c.OwnerIndex == other.Index);
                 Label(new Rect(row.x + 22, row.y + 2, 300, 24), $"<b>{other.Region.displayName}</b>", InkMid);
                 Label(new Rect(row.x + 22, row.y + 26, 300, 20),
-                    gone ? $"<color={CMuted}>сошла со сцены</color>" : $"{other.Region.leaderName} · городов {cities} · сила {_ai.Strength(other.Index)}", CaptionInk);
-                Tip(new Rect(row.x, row.y, 320, row.height), $"{other.Region.description}\nЛидер: {other.Region.leaderName} — {other.Region.leaderAbilityName}: {other.Region.leaderAbilityText}");
+                    gone ? $"<color={CMuted}>сошла со сцены</color>" : $"{other.Region.leaderName} · городов {cities} · сила {_ai.Strength(other.Index)} · цель: {AiPersonality.GoalName(_ai.Personality(other.Index).Goal)}", CaptionInk);
+                var ch = _ai.Personality(other.Index);
+                var goalCity = ch.GoalCity != null ? State.Diplomacy.CityById(ch.GoalCity) : null;
+                Tip(new Rect(row.x, row.y, 320, row.height),
+                    $"{other.Region.description}\nЛидер: {other.Region.leaderName} — {other.Region.leaderAbilityName}: {other.Region.leaderAbilityText}\n" +
+                    $"Характер: {ch.Summary}.\nЦель: {AiPersonality.GoalName(ch.Goal)}{(ch.Goal == AiGoal.Conquest && goalCity != null ? $" ({goalCity.Data.displayName})" : "")}\n" +
+                    $"Агрессия {ch.Aggression:0.0} · торговля {ch.Trade:0.0} · развитие {ch.Development:0.0} · набожность {ch.Piety:0.0} · доверие {ch.Trust:0.0} · осторожность {ch.Caution:0.0}");
 
                 if (!gone)
                 {

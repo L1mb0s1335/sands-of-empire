@@ -48,23 +48,23 @@ namespace Runeterra.Core
 
         public void PlayTurn(PlayerState player)
         {
-            PlayDiplomacy(player);
-            PlayForeignTrade(player);
-            var plan = MakePlan(player);
+            Perf.Measure("diplo", () => PlayDiplomacy(player));
+            Perf.Measure("ftrade", () => PlayForeignTrade(player));
+            var plan = Perf.Measure("plan", () => MakePlan(player));
             foreach (var unit in player.Units.ToList())
             {
                 if (_game.Winner != null) return;
                 if (!unit.IsAlive || unit.MovesLeft <= 0) continue;
-                if (unit.Data.buildCharges > 0) PlayBuilder(unit, player);
-                else if (unit.Data.canFoundCity) PlaySettler(unit, player);
-                else PlayMilitary(unit, player, plan);
+                if (unit.Data.buildCharges > 0) Perf.Measure("builder", () => PlayBuilder(unit, player));
+                else if (unit.Data.canFoundCity) Perf.Measure("settler", () => PlaySettler(unit, player));
+                else Perf.Measure(GameState.CanFight(unit) ? "military" : "scout", () => PlayMilitary(unit, player, plan));
             }
             if (_game.Winner != null) return;
-            DraftIfThreatened(player);
+            Perf.Measure("draft", () => DraftIfThreatened(player));
             ChooseResearch(player);
             ManageTreasury(player);
-            ChooseProduction(player);
-            Shop(player);
+            Perf.Measure("production", () => ChooseProduction(player));
+            Perf.Measure("shop", () => Shop(player));
         }
 
         private Plan MakePlan(PlayerState player)
@@ -108,7 +108,8 @@ namespace Runeterra.Core
                 bool settling = player.Units.Any(u => u.Data.canFoundCity) || cities.Any(c => c.CurrentBuild?.Unit?.canFoundCity == true);
                 var settler = _shop.FirstOrDefault(d => d.canFoundCity);
                 BuildItem item = null;
-                if (settler != null && !settling && cities.Count < DesiredCities && city.Population >= 2 && FindCitySpot(player, city.Coord) != null)
+                int desired = Personality(player.Index).Goal == AiGoal.Growth ? DesiredCities + 2 : DesiredCities;
+                if (settler != null && !settling && cities.Count < desired && city.Population >= 2 && FindCitySpot(player, city.Coord) != null)
                     item = new BuildItem(settler);
                 else if (_market != null && !city.HasMarket && _game.CanBuild(city, new BuildItem(_market), out _))
                     item = new BuildItem(_market);
@@ -175,8 +176,10 @@ namespace Runeterra.Core
             if (player.Researching != null) return;
             var order = new[] { Runeterra.Tech.TechBranch.Knowledge, Runeterra.Tech.TechBranch.LandAndWater, Runeterra.Tech.TechBranch.Trade,
                 Runeterra.Tech.TechBranch.Craft, Runeterra.Tech.TechBranch.Governance, Runeterra.Tech.TechBranch.War };
+            // Любимая ветвь правителя идёт как бы на 40% дешевле.
+            var fav = Personality(player.Index).FavoriteBranch;
             var next = _game.Tech.All.Where(t => _game.Tech.IsAvailable(player, t))
-                .OrderBy(t => t.baseCost).ThenBy(t => System.Array.IndexOf(order, t.branch)).FirstOrDefault();
+                .OrderBy(t => t.baseCost * (t.branch == fav ? 0.6f : 1f)).ThenBy(t => System.Array.IndexOf(order, t.branch)).FirstOrDefault();
             if (next != null) _game.Tech.Choose(player, next);
         }
 
@@ -186,7 +189,8 @@ namespace Runeterra.Core
             player.LandTax = 0.1f;
             player.PeopleTax = 0.05f;
             player.LuxuryTax = 0.1f;
-            player.Tariff = 0.1f;
+            // Торговый характер держит пошлину ниже — купцов больше.
+            player.Tariff = (float)System.Math.Round(0.15f - 0.1f * Personality(player.Index).Trade, 2);
             if (player.Reserve < 30 && player.Gold >= 70) { player.Gold -= 10; player.Reserve += 10; }
 
             // Займы: берём, когда враг у ворот, а казна пуста; возвращаем при избытке золота.

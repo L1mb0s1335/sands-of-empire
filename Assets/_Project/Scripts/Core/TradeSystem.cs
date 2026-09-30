@@ -75,14 +75,46 @@ namespace Runeterra.Core
         private int SeaStep(HexTile t, HexCoord a, HexCoord b) =>
             t.Terrain.IsWater() || t.Coord == a || t.Coord == b ? 1 : TerrainRules.Impassable;
 
-        public List<HexCoord> LandRoute(City from, City to) =>
-            HexPathfinder.FindPath(_game.Grid, from.Coord, to.Coord, c => IsHostile(c, from.OwnerIndex), LandStep);
+        /// <summary>
+        /// Кэш сухопутных маршрутов (в обход вражеских городов). Сбрасывается, когда меняются дороги,
+        /// города, войны и мир. Вражеские отряды на пути проверяются отдельно при отправке и в дороге.
+        /// </summary>
+        private readonly Dictionary<(HexCoord, HexCoord, int), List<HexCoord>> _routeCache = new Dictionary<(HexCoord, HexCoord, int), List<HexCoord>>();
+        /// <summary>Морские пути зависят только от портов — кэш без сброса.</summary>
+        private readonly Dictionary<(HexCoord, HexCoord), List<HexCoord>> _seaCache = new Dictionary<(HexCoord, HexCoord), List<HexCoord>>();
+        private readonly Dictionary<HexCoord, List<HexCoord>> _exportCache = new Dictionary<HexCoord, List<HexCoord>>();
 
-        public List<HexCoord> SeaRoute(HexCoord fromPort, HexCoord toPort) =>
-            HexPathfinder.FindPath(_game.Grid, fromPort, toPort, null, t => SeaStep(t, fromPort, toPort));
+        public void ClearRouteCache() => _routeCache.Clear();
+
+
+        public List<HexCoord> LandRoute(City from, City to)
+        {
+            var key = (from.Coord, to.Coord, from.OwnerIndex);
+            if (_routeCache.TryGetValue(key, out var cached)) return cached;
+            return _routeCache[key] = FindLandRoute(from, to);
+        }
+
+        private List<HexCoord> FindLandRoute(City from, City to)
+        {
+            int owner = from.OwnerIndex;
+            var hostile = new HashSet<HexCoord>(_game.Cities.Where(c => _game.AtWar(c.OwnerIndex, owner)).Select(c => c.Coord));
+            return HexPathfinder.FindPath(_game.Grid, from.Coord, to.Coord, hostile.Count == 0 ? null : (Func<HexCoord, bool>)hostile.Contains, LandStep);
+        }
+
+        public List<HexCoord> SeaRoute(HexCoord fromPort, HexCoord toPort)
+        {
+            if (_seaCache.TryGetValue((fromPort, toPort), out var cached)) return cached;
+            return _seaCache[(fromPort, toPort)] = HexPathfinder.FindPath(_game.Grid, fromPort, toPort, null, t => SeaStep(t, fromPort, toPort));
+        }
 
         /// <summary>Морской путь от порта до края карты (выход к заморскому рынку).</summary>
         public List<HexCoord> ExportRoute(HexCoord port)
+        {
+            if (_exportCache.TryGetValue(port, out var cached)) return cached;
+            return _exportCache[port] = FindExportRoute(port);
+        }
+
+        private List<HexCoord> FindExportRoute(HexCoord port)
         {
             var edge = _game.Grid.Tiles.Where(t => t.Terrain == TerrainType.Ocean && _game.Grid.IsEdge(t.Coord))
                 .OrderBy(t => t.Coord.DistanceTo(port)).FirstOrDefault();
@@ -137,6 +169,26 @@ namespace Runeterra.Core
             // Свои города и города партнёров по торговому соглашению (с рынком).
             var partners = _game.Cities.Where(c => c != from &&
                 (c.OwnerIndex == player.Index || (c.HasMarket && CanTradeWith(player.Index, c.OwnerIndex)))).ToList();
+            // Маршруты считаются один раз на партнёра (а не на каждый товар): поиск пути — самое дорогое.
+            var routes = new List<(City to, List<HexCoord> path, bool sea, int cost)>();
+            // Клетки у вражеских отрядов: по таким дорогам торговцы караван не отправят.
+            var danger = new HashSet<HexCoord>();
+            foreach (var u in _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units))
+                if (u.IsAlive && u.MeleeStrength > 0)
+                {
+                    danger.Add(u.Coord);
+                    for (int d = 0; d < 6; d++) danger.Add(u.Coord.Neighbor(d));
+                }
+            foreach (var to in partners)
+            {
+                var land = LandRoute(from, to);
+                // Торговцы не отправляют караван по дороге, которую сейчас держит враг.
+                if (land != null && !(danger.Count > 0 && land.Any(danger.Contains))) routes.Add((to, land, false, RouteCost(land, false)));
+                if (from.HasPort && to.HasPort && SeaRoute(from.PortCoord.Value, to.PortCoord.Value) is List<HexCoord> sea)
+                    routes.Add((to, sea, true, RouteCost(sea, true)));
+            }
+            var export = from.HasPort ? ExportRoute(from.PortCoord.Value) : null;
+
             foreach (var good in _game.Goods)
             {
                 float reserve = good == _game.Grain ? _game.DroughtGrainNeed(from) : 2f;
@@ -144,29 +196,20 @@ namespace Runeterra.Core
                 if (amount < 1f) continue;
                 float buy = Price(from, good);
 
-                foreach (var to in partners)
+                foreach (var (to, path, bySea, cost) in routes)
                 {
-                    var land = LandRoute(from, to);
-                    List<HexCoord> sea = from.HasPort && to.HasPort ? SeaRoute(from.PortCoord.Value, to.PortCoord.Value) : null;
-                    foreach (var (path, bySea) in new[] { (land, false), (sea, true) })
-                    {
-                        // Торговцы не отправляют караван по дороге, которую сейчас держит враг.
-                        if (path == null || (!bySea && path.Any(c => EnemyAdjacent(c, player.Index)))) continue;
-                        float sell = Price(to, good) * (1f - player.Tariff - ImportDuty(to.OwnerIndex, player.Index));
-                        float profit = (sell - buy - TransportCostPerStep * RouteCost(path, bySea) * good.basePrice) * amount;
-                        if (sell - buy < buy * MinMarginShare || profit <= best.Profit) continue;
-                        best = new Offer { Good = good, Amount = amount, To = to, Sea = bySea, Path = path, Profit = profit };
-                    }
+                    float sell = Price(to, good) * (1f - player.Tariff - ImportDuty(to.OwnerIndex, player.Index));
+                    float profit = (sell - buy - TransportCostPerStep * cost * good.basePrice) * amount;
+                    if (sell - buy < buy * MinMarginShare || profit <= best.Profit) continue;
+                    best = new Offer { Good = good, Amount = amount, To = to, Sea = bySea, Path = path, Profit = profit };
                 }
 
-                if (from.HasPort)
+                if (export != null)
                 {
-                    var route = ExportRoute(from.PortCoord.Value);
-                    if (route == null) continue;
                     float sell = ExternalPrice(good) * (player.Has("exchange") ? 1.15f : 1f) * (1f - player.Tariff);
-                    float profit = (sell - buy - TransportCostPerStep * route.Count * good.basePrice) * amount;
+                    float profit = (sell - buy - TransportCostPerStep * export.Count * good.basePrice) * amount;
                     if (sell - buy >= buy * MinMarginShare && profit > best.Profit)
-                        best = new Offer { Good = good, Amount = amount, To = null, Sea = true, Path = route, Profit = profit };
+                        best = new Offer { Good = good, Amount = amount, To = null, Sea = true, Path = export, Profit = profit };
                 }
             }
             if (best.Good == null) return false;

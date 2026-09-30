@@ -37,6 +37,15 @@ namespace Runeterra.Core
 
         internal void OnPeaceMade(int a, int b) { }
 
+        /// <summary>Военная сила стороны: сумма сил боевых юнитов и по 10 за город.</summary>
+        public int MilitaryStrength(int player) =>
+            Players[player].Units.Where(u => u.IsAlive && CanFight(u)).Sum(u => u.Data.IsRanged ? u.RangedStrength : u.MeleeStrength) +
+            10 * Cities.Count(c => c.OwnerIndex == player);
+
+        /// <summary>Общая мощь стороны (для коалиций): войско, города, жители.</summary>
+        public int PowerScore(int player) =>
+            MilitaryStrength(player) + Cities.Where(c => c.OwnerIndex == player).Sum(c => 25 + 3 * c.Population);
+
         /// <summary>Идущие войны одной строкой (для журнала автопроверки).</summary>
         public string WarSummary()
         {
@@ -110,7 +119,12 @@ namespace Runeterra.Core
             _random = new Random(grid.Seed * 31 + 7);
             Turns = new TurnManager(players, aiTurn);
             Turns.PlayerTurnStarted += BeginPlayerTurn;
-            Turns.NewTurnStarted += t => Diplomacy.NewTurn(t);
+            RoadsChanged += Trade.ClearRouteCache;
+            CityFounded += _ => Trade.ClearRouteCache();
+            Turns.NewTurnStarted += t =>
+            {
+                Diplomacy.NewTurn(t);
+            };
         }
 
         // ---------- Запросы ----------
@@ -806,9 +820,9 @@ namespace Runeterra.Core
 
         private void GrowAndProduce(PlayerState player, City city)
         {
-            UpdateTierAndDisasters(city);
-            ProcessGoods(city);
-            city.FoodStock += CityFood(city);
+            Perf.Measure("c.tier", () => UpdateTierAndDisasters(city));
+            Perf.Measure("c.goods", () => ProcessGoods(city));
+            city.FoodStock += Perf.Measure("c.food", () => CityFood(city));
             if (city.FoodStock < 0)
             {
                 city.FoodStock = 0;
@@ -825,7 +839,7 @@ namespace Runeterra.Core
 
             var item = city.CurrentBuild;
             if (item == null) return;
-            if (!CanBuild(city, item, out var reason))
+            if (!Perf.Measure("c.canbuild", () => CanBuild(city, item, out _)) && !CanBuild(city, item, out var reason))
             {
                 // Например, рынок уже поставил строитель — снимаем заказ, накопленное сохраняем.
                 if ((item.District != null && HasDistrict(city, item.District)) || (item.Building != null && city.IsFull(item.Building)))
@@ -928,10 +942,16 @@ namespace Runeterra.Core
         /// Клетки, закрытые для юнита: вражеские юниты и вражеские города (со стенами или если он не захватчик).
         /// Сквозь своих проходить можно, но останавливаться на занятой клетке нельзя (см. MoveUnit).
         /// </summary>
-        public Func<HexCoord, bool> BlockedFor(Unit unit, HexCoord? allowGoal = null) => c =>
-            (allowGoal == null || c != allowGoal.Value) &&
-            (ForeignAt(c, unit.OwnerIndex) != null || (IsForeignCity(c, unit.OwnerIndex) &&
-                (!IsEnemyCity(c, unit.OwnerIndex) || !unit.Data.canCapture || CityAt(c).Walls > 0)));
+        public Func<HexCoord, bool> BlockedFor(Unit unit, HexCoord? allowGoal = null)
+        {
+            // Снимок позиций на время одного поиска пути: A* спрашивает о тысячах клеток,
+            // перебирать всех юнитов и города на каждый вопрос слишком дорого.
+            int me = unit.OwnerIndex;
+            var foreignUnits = new HashSet<HexCoord>(Players.Where(p => p.Index != me).SelectMany(p => p.Units).Where(u => u.IsAlive).Select(u => u.Coord));
+            var closedCities = new HashSet<HexCoord>(Cities.Where(c => c.OwnerIndex != me &&
+                (!AtWar(c.OwnerIndex, me) || !unit.Data.canCapture || c.Walls > 0)).Select(c => c.Coord));
+            return c => (allowGoal == null || c != allowGoal.Value) && (foreignUnits.Contains(c) || closedCities.Contains(c));
+        }
 
         /// <summary>Город стороны, с которой идёт война.</summary>
         public bool IsEnemyCity(HexCoord c, int ownerIndex)
@@ -971,7 +991,15 @@ namespace Runeterra.Core
         public void MoveUnit(Unit unit, List<HexCoord> path, Func<HexCoord, bool> stopAt = null)
         {
             try { MoveUnitCore(unit, path, stopAt); }
-            finally { Vision.RefreshAll(); }
+            // Обзор меняется у того, кто ходил; игроку-человеку — чтобы видеть чужие отряды в движении.
+            finally
+            {
+                Perf.Measure("vision", () =>
+                {
+                    Vision.Refresh(Players[unit.OwnerIndex]);
+                    foreach (var p in Players) if (p.IsHuman && p.Index != unit.OwnerIndex) Vision.Refresh(p);
+                });
+            }
         }
 
         private void MoveUnitCore(Unit unit, List<HexCoord> path, Func<HexCoord, bool> stopAt)
@@ -1010,6 +1038,7 @@ namespace Runeterra.Core
             var newRegion = Players[newOwner].Region;
             city.OwnerIndex = newOwner;
             city.ResetWallsAfterCapture();
+            Trade.ClearRouteCache();
             Diplomacy.AddOpinion(oldOwner, newOwner, -20);
             // При штурме гибнет половина мастеров, у выживших стаж сгорает наполовину.
             foreach (var list in city.Masters.Values)
@@ -1250,14 +1279,17 @@ namespace Runeterra.Core
                 if (!unit.Acted) unit.Heal(HealAmount(unit));
                 unit.ClearActed();
             }
-            foreach (var city in Cities.Where(c => c.OwnerIndex == player.Index).ToList())
+            Perf.Measure("cities", () =>
             {
-                city.BeginOwnerTurn(player.Has("fortifications") ? 10 : 0, IsBlockaded(city));
-                GrowAndProduce(player, city);
-            }
-            Trade.PlayTurn(player);
+                foreach (var city in Cities.Where(c => c.OwnerIndex == player.Index).ToList())
+                {
+                    city.BeginOwnerTurn(player.Has("fortifications") ? 10 : 0, IsBlockaded(city));
+                    GrowAndProduce(player, city);
+                }
+            });
+            Perf.Measure("trade", () => Trade.PlayTurn(player));
             CollectTaxes(player);
-            Tech.PlayTurn(player);
+            Perf.Measure("tech", () => Tech.PlayTurn(player));
             CitiesShoot(player);
         }
 

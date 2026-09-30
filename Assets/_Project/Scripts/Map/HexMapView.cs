@@ -87,8 +87,16 @@ namespace Runeterra.Map
             if (Application.isPlaying && !IsBuilt) Build();
         }
 
+        /// <summary>Границы перестраиваются раз в кадр, а не на каждое изменение города.</summary>
+        private bool _bordersDirty;
+
         private void LateUpdate()
         {
+            if (_bordersDirty && IsBuilt)
+            {
+                _bordersDirty = false;
+                BuildBorders();
+            }
             if (mapCamera == null) return;
             var rot = mapCamera.transform.rotation;
             foreach (var label in _labels)
@@ -201,7 +209,7 @@ namespace Runeterra.Map
                 _territoryCity[c] = cityCoord;
                 _owners[c] = owner;
             }
-            BuildBorders();
+            _bordersDirty = true;
             BuildCity(tile);
             if (isNew) RebuildFeatures();
         }
@@ -257,7 +265,7 @@ namespace Runeterra.Map
                 if (kv.Value != null) kv.Value.SetActive(fog(kv.Key) > 0);
             foreach (var kv in _districtObjects)
                 if (kv.Value != null) kv.Value.SetActive(fog(kv.Key) > 0);
-            BuildBorders();
+            _bordersDirty = true;
         }
 
         /// <summary>Дороги: грунтовые полосы от центра клетки к соседним дорогам и городам.</summary>
@@ -327,7 +335,7 @@ namespace Runeterra.Map
             _cityOwners[cityCoord] = region;
             foreach (var kv in _territoryCity)
                 if (kv.Value == cityCoord) _owners[kv.Key] = region;
-            BuildBorders();
+            _bordersDirty = true;
             BuildCity(Grid.GetTile(cityCoord));
         }
 
