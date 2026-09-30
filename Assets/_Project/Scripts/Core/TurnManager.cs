@@ -18,6 +18,8 @@ namespace Runeterra.Core
         public int TariffIncomeLastTurn { get; set; }
         /// <summary>Ввозные пошлины с иностранных караванов за последний круг ходов.</summary>
         public int ImportDutyLastTurn { get; set; }
+        /// <summary>Всего пошлин за партию (для очков).</summary>
+        public int TradeIncomeTotal { get; set; }
 
         // ---------- Налоги и казна ----------
 

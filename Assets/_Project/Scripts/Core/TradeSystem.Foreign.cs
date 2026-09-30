@@ -127,6 +127,7 @@ namespace Runeterra.Core
         {
             if (amount <= 0) return;
             _game.Players[receiver].Gold += amount;
+            _game.Players[receiver].TradeIncomeTotal += amount;
             _importAccum[receiver] = (_importAccum.TryGetValue(receiver, out var v) ? v : 0) + amount;
         }
 

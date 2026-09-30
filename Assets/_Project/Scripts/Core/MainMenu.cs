@@ -1,41 +1,121 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using static Runeterra.Core.HudSkin;
 
 namespace Runeterra.Core
 {
-    /// <summary>Главное меню: «Новая игра», «Загрузить» и «Выход».</summary>
+    /// <summary>
+    /// Главное меню в стиле пергамента и бронзы: «Новая игра» (выбор сценария, стороны и длины партии),
+    /// «Загрузить» и «Выход».
+    /// </summary>
     public class MainMenu : MonoBehaviour
     {
         public string gameScene = "HexMap";
         public string title = "Runeterra 4X";
 
-        private GUIStyle _title, _button;
+        private bool _setup;
+        private readonly GameSetup _choice = new GameSetup();
 
-        private static float Scale => Mathf.Max(1f, Screen.height / 900f);
+        /// <summary>Стороны партии (id регионов сцены партии), имена лидеров и цвета для выбора в меню.</summary>
+        private static readonly (string id, string name, string leader, Color color)[] Sides =
+        {
+            ("palestine", "Палестина (Айюбиды)", "Салах ад-Дин", new Color(0f, 0.478f, 0.239f)),
+            ("jerusalem_kingdom", "Крестоносцы", "Ричард Львиное Сердце", new Color(0.93f, 0.91f, 0.86f)),
+            ("byzantium", "Византия", "Исаак II Ангел", new Color(0.45f, 0.12f, 0.45f)),
+            ("rum", "Султанат Рум", "Кылыч-Арслан II", new Color(0.12f, 0.45f, 0.72f)),
+            ("abbasids", "Аббасидский халифат", "ан-Насир", new Color(0.12f, 0.12f, 0.14f)),
+            ("mosul", "Зангиды Мосула", "Изз ад-Дин Масуд", new Color(0.78f, 0.33f, 0.10f)),
+        };
+
+        private void Awake() => _choice.HumanRegion = Sides[0].id;
 
         private void OnGUI()
         {
-            if (_title == null)
-            {
-                _title = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
-                _button = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
-            }
-            _title.fontSize = Mathf.RoundToInt(64 * Scale);
-            _button.fontSize = Mathf.RoundToInt(24 * Scale);
-
-            float cx = Screen.width / 2f, cy = Screen.height / 2f;
-            float w = 320 * Scale, h = 70 * Scale;
-            GUI.Label(new Rect(cx - 500 * Scale, cy - 220 * Scale, 1000 * Scale, 100 * Scale), title, _title);
-            if (GUI.Button(new Rect(cx - w / 2f, cy - 40 * Scale, w, h), "Новая игра", _button)) NewGame();
-            GUI.enabled = SaveSystem.HasSave;
-            if (GUI.Button(new Rect(cx - w / 2f, cy + 50 * Scale, w, h), "Загрузить", _button)) LoadGame();
-            GUI.enabled = true;
-            if (GUI.Button(new Rect(cx - w / 2f, cy + 140 * Scale, w, h), "Выход", _button)) Quit();
+            Ensure();
+            Fill(new Rect(0, 0, W, H), TealDark);
+            Label(new Rect(0, 60, W, 70), $"<size={Sz(56)}>{title}</size>", CenterTitle);
+            Label(new Rect(0, 128, W, 30), "Левант, Анатолия и Месопотамия · осень 1187 года", CenterLight);
+            if (_setup) DrawSetup();
+            else DrawMain();
         }
 
-        public void NewGame()
+        private static GUIStyle _centerTitle;
+        private static GUIStyle CenterTitle => _centerTitle ??= new GUIStyle(Title) { alignment = TextAnchor.MiddleCenter };
+
+        private void DrawMain()
+        {
+            var r = new Rect(W / 2f - 200, H / 2f - 110, 400, 280);
+            Window(r);
+            float x = r.x + 50, w = r.width - 100;
+            if (Button(new Rect(x, r.y + 36, w, 56), "Новая игра", BtnBig)) _setup = true;
+            GUI.enabled = SaveSystem.HasSave;
+            if (Button(new Rect(x, r.y + 108, w, 56), "Загрузить", BtnBig)) LoadGame();
+            GUI.enabled = true;
+            if (Button(new Rect(x, r.y + 180, w, 56), "Выход", BtnBig)) Quit();
+        }
+
+        private void DrawSetup()
+        {
+            var r = new Rect(W / 2f - 480, 180, 960, Mathf.Min(640, H - 200));
+            Window(r);
+            float pad = 28, x = r.x + pad, y = r.y + 16, w = r.width - pad * 2;
+            Label(new Rect(x, y, w, 32), "Новая партия", Heading);
+            y += 42;
+
+            Label(new Rect(x, y, w, 24), "<b>Сценарий</b>", InkMid);
+            y += 28;
+            float half = (w - 12) / 2f;
+            foreach (var s in new[] { Scenario.Historical1187, Scenario.PeacefulDevelopment })
+            {
+                var b = new Rect(x + (s == Scenario.Historical1187 ? 0 : half + 12), y, half, 36);
+                if (GUI.Toggle(R(b), _choice.Scenario == s, GameSetup.ScenarioName(s), Btn) && _choice.Scenario != s) _choice.Scenario = s;
+            }
+            y += 42;
+            Label(new Rect(x, y, w, 44), GameSetup.ScenarioText(_choice.Scenario), BodySmall);
+            y += 52;
+
+            Label(new Rect(x, y, w, 24), "<b>Сторона</b>", InkMid);
+            y += 28;
+            float cw = (w - 24) / 3f, ch = 58;
+            for (int i = 0; i < Sides.Length; i++)
+            {
+                var side = Sides[i];
+                var b = new Rect(x + (i % 3) * (cw + 12), y + (i / 3) * (ch + 10), cw, ch);
+                bool on = _choice.HumanRegion == side.id;
+                if (GUI.Toggle(R(b), on, "", Btn) && !on) _choice.HumanRegion = side.id;
+                Fill(new Rect(b.x + 10, b.y + 10, 10, ch - 20), side.color);
+                // На выбранной (тёмной) кнопке — светлый текст.
+                string ink = on ? LGold : "#2b2118", sub = on ? LMuted : CMuted;
+                Label(new Rect(b.x + 30, b.y + 8, cw - 36, 24), $"<color={ink}><b>{side.name}</b></color>", Body);
+                Label(new Rect(b.x + 30, b.y + 32, cw - 36, 20), $"<color={sub}>{side.leader}</color>", CaptionInk);
+            }
+            y += (ch + 10) * 2 + 8;
+
+            Label(new Rect(x, y, w, 24), "<b>Длина партии</b>", InkMid);
+            y += 28;
+            float lw = (w - 24) / 3f;
+            for (int i = 0; i < GameSetup.Lengths.Length; i++)
+            {
+                int turns = GameSetup.Lengths[i];
+                var b = new Rect(x + i * (lw + 12), y, lw, 36);
+                bool on = _choice.TurnLimit == turns;
+                if (GUI.Toggle(R(b), on, $"{GameSetup.LengthName(turns)} — {turns} ходов", Btn) && !on) _choice.TurnLimit = turns;
+            }
+            y += 48;
+
+            if (Button(new Rect(r.x + pad, r.yMax - 70, 200, 48), "Назад", BtnBig)) _setup = false;
+            if (Button(new Rect(r.xMax - pad - 260, r.yMax - 70, 260, 48), "Начать", BtnBig)) StartGame(_choice);
+        }
+
+        public void ShowSetup(bool show) => _setup = show;
+
+        /// <summary>Новая партия с настройками по умолчанию.</summary>
+        public void NewGame() => StartGame(new GameSetup { HumanRegion = Sides[0].id });
+
+        public void StartGame(GameSetup setup)
         {
             SaveSystem.PendingLoad = null;
+            GameSetup.Pending = setup;
             SceneManager.LoadScene(gameScene);
         }
 

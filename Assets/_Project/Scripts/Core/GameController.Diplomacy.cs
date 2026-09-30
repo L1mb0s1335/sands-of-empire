@@ -98,7 +98,7 @@ namespace Runeterra.Core
                 int cities = Cities.Count(c => c.OwnerIndex == other.Index);
                 Label(new Rect(row.x + 22, row.y + 2, 300, 24), $"<b>{other.Region.displayName}</b>", InkMid);
                 Label(new Rect(row.x + 22, row.y + 26, 300, 20),
-                    gone ? $"<color={CMuted}>сошла со сцены</color>" : $"{other.Region.leaderName} · городов {cities} · сила {_ai.Strength(other.Index)} · цель: {AiPersonality.GoalName(_ai.Personality(other.Index).Goal)}", CaptionInk);
+                    gone ? $"<color={CMuted}>сошла со сцены</color>" : $"{other.Region.leaderName} · городов {cities} · сила {_ai.Strength(other.Index)} · очки {State.Score(other)} · цель: {AiPersonality.GoalName(_ai.Personality(other.Index).Goal)}", CaptionInk);
                 var ch = _ai.Personality(other.Index);
                 var goalCity = ch.GoalCity != null ? State.Diplomacy.CityById(ch.GoalCity) : null;
                 Tip(new Rect(row.x, row.y, 320, row.height),

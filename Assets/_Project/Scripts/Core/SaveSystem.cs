@@ -28,7 +28,9 @@ namespace Runeterra.Core
 
         [Serializable] public class SaveData
         {
-            public int version = 2;
+            public int version = 3;
+            public int scenario, turnLimit = 200;
+            public string humanRegion;
             public int mapRadius, seed;
             public int turn, currentIndex;
             public int winner = -1;
@@ -112,7 +114,7 @@ namespace Runeterra.Core
         [Serializable] public class PlayerSave
         {
             public string region;
-            public int gold, tariffIncome, importDuty, reserve, landIncome, peopleIncome, luxuryIncome, smuggled;
+            public int gold, tariffIncome, importDuty, tradeTotal, reserve, landIncome, peopleIncome, luxuryIncome, smuggled;
             public float tariff, landTax, peopleTax, luxuryTax, debasement;
             public int debt, missedPayments, interestLastTurn, bankruptUntil, stigmaUntil;
             public List<string> techs = new List<string>();
@@ -190,6 +192,9 @@ namespace Runeterra.Core
                 currentIndex = s.Turns.CurrentIndex,
                 winner = s.Winner ?? -1,
                 gameOverText = s.GameOverText,
+                scenario = (int)s.Scenario,
+                turnLimit = s.TurnLimit,
+                humanRegion = s.Players.FirstOrDefault(p => p.IsHuman)?.Region.id,
             };
             foreach (var t in s.Grid.Tiles.OrderBy(t => t.Coord.q).ThenBy(t => t.Coord.r))
                 d.tiles.Add(new TileSave { c = t.Coord, feature = (int)t.Feature, road = t.HasRoad, cityId = t.CityId });
@@ -198,7 +203,7 @@ namespace Runeterra.Core
             {
                 var ps = new PlayerSave
                 {
-                    region = p.Region.id, gold = p.Gold, tariff = p.Tariff, tariffIncome = p.TariffIncomeLastTurn, importDuty = p.ImportDutyLastTurn,
+                    region = p.Region.id, gold = p.Gold, tariff = p.Tariff, tariffIncome = p.TariffIncomeLastTurn, importDuty = p.ImportDutyLastTurn, tradeTotal = p.TradeIncomeTotal,
                     landTax = p.LandTax, peopleTax = p.PeopleTax, luxuryTax = p.LuxuryTax, reserve = p.Reserve,
                     landIncome = p.LandIncome, peopleIncome = p.PeopleIncome, luxuryIncome = p.LuxuryIncome, smuggled = p.SmuggledLastTurn,
                     debasement = p.Debasement, debt = p.Debt, missedPayments = p.MissedPayments, interestLastTurn = p.InterestLastTurn,
@@ -375,7 +380,7 @@ namespace Runeterra.Core
                 var ps = d.players[i];
                 var p = s.Players[i];
                 if (p.Region.id != ps.region) throw new InvalidDataException($"регион {i}: ожидался {ps.region}, на карте {p.Region.id}");
-                p.Gold = ps.gold; p.Tariff = ps.tariff; p.TariffIncomeLastTurn = ps.tariffIncome; p.ImportDutyLastTurn = ps.importDuty;
+                p.Gold = ps.gold; p.Tariff = ps.tariff; p.TariffIncomeLastTurn = ps.tariffIncome; p.ImportDutyLastTurn = ps.importDuty; p.TradeIncomeTotal = ps.tradeTotal;
                 p.LandTax = ps.landTax; p.PeopleTax = ps.peopleTax; p.LuxuryTax = ps.luxuryTax; p.Reserve = ps.reserve;
                 p.LandIncome = ps.landIncome; p.PeopleIncome = ps.peopleIncome; p.LuxuryIncome = ps.luxuryIncome; p.SmuggledLastTurn = ps.smuggled;
                 p.Debasement = ps.debasement; p.Debt = ps.debt; p.MissedPayments = ps.missedPayments; p.InterestLastTurn = ps.interestLastTurn;

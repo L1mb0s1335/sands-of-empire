@@ -189,9 +189,11 @@ namespace Runeterra.Core
             var seal = SealRect();
             var card = Hud(new Rect(seal.x - 12 - 196, 7, 196, 62));
             Box(card, CardTex);
-            Label(new Rect(card.x, card.y + 5, card.width, 28), $"Ход {Turns.Turn}", TurnTitle);
+            Label(new Rect(card.x, card.y + 5, card.width, 28), $"Ход {Mathf.Min(Turns.Turn, State.TurnLimit)} <size={Sz(14)}>из {State.TurnLimit}</size>", TurnTitle);
             Label(new Rect(card.x, card.y + 33, card.width, 20), $"Год {State.Year} · {Seasons.Name(State.Season)}", Center);
-            Tip(card, $"{Seasons.Name(State.Season)}: {Seasons.Hint(State.Season)}" + (player.IsHuman ? "" : $"\nСейчас ходит: {player.Region.displayName}"));
+            Tip(card, $"{Seasons.Name(State.Season)}: {Seasons.Hint(State.Season)}" + (player.IsHuman ? "" : $"\nСейчас ходит: {player.Region.displayName}") +
+                      $"\nСценарий «{GameSetup.ScenarioName(State.Scenario)}», после хода {State.TurnLimit} — подсчёт очков.\nОчки: " +
+                      string.Join(", ", Players.Where(p => !State.IsEliminated(p)).OrderByDescending(State.Score).Select(p => $"{p.Region.displayName} {State.Score(p)}")));
             if (Winner != null) return;
 
             float bw = (card.width - 6) / 2f;
@@ -938,7 +940,7 @@ namespace Runeterra.Core
             var r = new Rect(W / 2f - 330, H / 2f - 160, 660, 320);
             Window(r);
             Label(new Rect(r.x, r.y + 30, r.width, 80), won ? $"<color={CGold}>Победа!</color>" : $"<color={CBad}>Поражение</color>", BigTitle);
-            Label(new Rect(r.x + 30, r.y + 118, r.width - 60, 60), $"{State.GameOverText}. Ход {Turns.Turn}.", Center);
+            Label(new Rect(r.x + 30, r.y + 118, r.width - 60, 60), $"{State.GameOverText}. Ход {Mathf.Min(Turns.Turn, State.TurnLimit)}.", Center);
             if (Button(new Rect(W / 2f - 120, r.yMax - 100, 240, 62), "Заново", BtnBig)) Restart();
         }
 

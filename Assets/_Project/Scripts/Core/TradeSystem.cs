@@ -303,6 +303,7 @@ namespace Runeterra.Core
                 CollectImportDuty(c.To.OwnerIndex, (int)Math.Round(margin * ImportDuty(c.To.OwnerIndex, c.OwnerIndex)));
             player.Gold += tariff;
             player.TariffIncomeLastTurn += tariff;
+            player.TradeIncomeTotal += tariff;
             player.SmuggledLastTurn += (int)Math.Round(smuggled);
             player.CaravansDeliveredLastTurn++;
             Finish(c, true, $"доставил {c.Amount:0} × {c.Good.displayName} по {price:0.0} — пошлина +{tariff}" +

@@ -77,13 +77,19 @@ namespace Runeterra.Core
             }
             if (!map.IsBuilt) map.Build();
 
+            // Настройки партии: из сохранения или из меню старта (остаются для «Заново»).
+            var setup = save != null
+                ? new GameSetup { Scenario = (Scenario)save.scenario, TurnLimit = save.turnLimit, HumanRegion = save.humanRegion }
+                : GameSetup.Pending ?? new GameSetup();
+            var regions = map.regions.Where(r => r != null).ToList();
+            string humanRegion = regions.Any(r => r.id == setup.HumanRegion) ? setup.HumanRegion : regions[0].id;
             var players = new List<PlayerState>();
-            foreach (var region in map.regions)
-                if (region != null)
-                    players.Add(new PlayerState(players.Count, region, isHuman: players.Count == 0) { Gold = region.startingGold });
+            foreach (var region in regions)
+                players.Add(new PlayerState(players.Count, region, isHuman: region.id == humanRegion) { Gold = region.startingGold });
 
             State = new GameState(map.Grid, players, market, p => _ai.PlayTurn(p), goods, buildings, techs);
             State.SetPort(port);
+            State.Configure(setup.Scenario, setup.TurnLimit);
             State.Shop.AddRange(shop);
             _ai = new AiPlayer(State, shop, market, buildings);
             State.Trade.Dispatched += c => _caravans[c] = CaravanView.Create(c, map, Players[c.OwnerIndex].Region.primaryColor, map.baseMaterial);

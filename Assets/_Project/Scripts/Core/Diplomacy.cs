@@ -168,8 +168,11 @@ namespace Runeterra.Core
             {
                 int v = Christian.Contains(a.Region.id) == Christian.Contains(b.Region.id) ? 10 : -20;
                 v += Grudge(a.Region.id, b.Region.id);
-                Set(a.Index, b.Index, new Relation { Value = v, Stance = Stance.Truce, Until = StartTruceTurns });
+                Set(a.Index, b.Index, WarsDisabled
+                    ? new Relation { Value = v, Stance = Stance.Peace }
+                    : new Relation { Value = v, Stance = Stance.Truce, Until = StartTruceTurns });
             }
+            if (WarsDisabled) return;
             foreach (var (owner, cityId) in HistoricalClaims)
             {
                 var p = players.FirstOrDefault(x => x.Region.id == owner);
@@ -466,7 +469,7 @@ namespace Runeterra.Core
             }
             UpdateCoalition(turn);
             foreach (int m in Coalition) AddOpinion(m, CoalitionTarget, -1);
-            if (turn == StartTruceTurns + 1) _game.Report("Стартовое перемирие окончено: войну можно объявить по созревшей претензии");
+            if (turn == StartTruceTurns + 1 && !WarsDisabled) _game.Report("Стартовое перемирие окончено: войну можно объявить по созревшей претензии");
             Proposals.RemoveAll(p => turn - p.Turn > 2);
             Claims.RemoveAll(c => CityById(c.CityId) == null);
             Changed?.Invoke();

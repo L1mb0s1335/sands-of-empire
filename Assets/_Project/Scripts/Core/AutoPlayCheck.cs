@@ -13,6 +13,7 @@ namespace Runeterra.Core
     public class AutoPlayCheck : MonoBehaviour
     {
         private string _outDir;
+        private GameSetup _setup;
 
         /// <summary>Идёт автопроверка (журнал дипломатии пишется в лог).</summary>
         public static bool Active { get; private set; }
@@ -28,6 +29,13 @@ namespace Runeterra.Core
             DontDestroyOnLoad(go);
             var check = go.AddComponent<AutoPlayCheck>();
             check._outDir = i + 1 < args.Length ? args[i + 1] : Application.persistentDataPath;
+            string Arg(string name) { int k = System.Array.IndexOf(args, name); return k >= 0 && k + 1 < args.Length ? args[k + 1] : null; }
+            check._setup = new GameSetup
+            {
+                Scenario = Arg("-scenario") == "peace" ? Scenario.PeacefulDevelopment : Scenario.Historical1187,
+                HumanRegion = Arg("-side") ?? "palestine",
+                TurnLimit = int.TryParse(Arg("-turns"), out var t) ? t : 200,
+            };
             Directory.CreateDirectory(check._outDir);
         }
 
@@ -86,7 +94,11 @@ namespace Runeterra.Core
             var menu = FindFirstObjectByType<MainMenu>();
             Debug.Log($"[AUTOPLAY] menu found: {menu != null}");
             yield return Shot("01_menu.png");
-            menu.NewGame();
+            menu.ShowSetup(true);
+            yield return new WaitForSeconds(0.3f);
+            yield return Shot("01b_setup.png");
+            Debug.Log($"[AUTOPLAY] setup: {GameSetup.ScenarioName(_setup.Scenario)}, side={_setup.HumanRegion}, turns={_setup.TurnLimit}");
+            menu.StartGame(_setup);
 
             GameController game = null;
             while (game == null || game.Turns == null)
@@ -99,7 +111,7 @@ namespace Runeterra.Core
             yield return Shot("02_turn1.png");
 
             // Панель города и кнопка строителя.
-            var human = game.Turns.Players[0];
+            var human = System.Linq.Enumerable.First(game.Turns.Players, p => p.IsHuman);
             game.SelectCity(game.State.CapitalOf(human));
             yield return new WaitForSeconds(0.3f);
             yield return Shot("02b_city_panel.png");
@@ -120,7 +132,7 @@ namespace Runeterra.Core
             game.SelectCity(null);
 
             Time.timeScale = 6f;
-            while (game.Winner == null && game.Turns.Turn < 250)
+            while (game.Winner == null && game.Turns.Turn <= game.State.TurnLimit + 2)
             {
                 while (game.Busy) yield return null;
                 if (game.Turns.Turn == 20 && !_saveTested)
@@ -162,7 +174,7 @@ namespace Runeterra.Core
                 }
                 if (game.Turns.Turn == 40)
                 {
-                    game.SelectCity(game.State.CapitalOf(game.Turns.Players[0]));
+                    game.SelectCity(game.State.CapitalOf(System.Linq.Enumerable.First(game.Turns.Players, p => p.IsHuman)));
                     yield return new WaitForSeconds(0.2f);
                     yield return Shot("03b_turn40_city.png");
                     game.SelectCity(null);
@@ -179,13 +191,15 @@ namespace Runeterra.Core
             yield return new WaitForSeconds(1f);
 
             var winner = game.Winner != null ? game.Turns.Players[game.Winner.Value] : null;
-            Debug.Log($"[AUTOPLAY] game over at turn {game.Turns.Turn}: winner={(winner != null ? winner.Region.displayName : "none")}, human won={winner?.IsHuman}");
+            Debug.Log($"[AUTOPLAY] game over at turn {game.Turns.Turn}: winner={(winner != null ? winner.Region.displayName : "none")}, human won={winner?.IsHuman}, text={game.State.GameOverText}");
+            Debug.Log("[AUTOPLAY] scores: " + string.Join(", ", System.Linq.Enumerable.Select(game.Turns.Players,
+                p => $"{p.Region.displayName}={game.State.Score(p)} (городов {System.Linq.Enumerable.Count(game.Cities, c => c.OwnerIndex == p.Index)}, узлов {p.Techs.Count})")));
             yield return Shot("04_game_over.png");
 
             game.Restart();
             yield return new WaitForSeconds(2f);
             var fresh = FindFirstObjectByType<GameController>();
-            Debug.Log($"[AUTOPLAY] after restart: turn={fresh.Turns.Turn}, winner={(fresh.Winner == null ? "none" : fresh.Winner.ToString())}, units={fresh.Turns.Players[0].Units.Count}+{fresh.Turns.Players[1].Units.Count}");
+            Debug.Log($"[AUTOPLAY] after restart: turn={fresh.Turns.Turn}, winner={(fresh.Winner == null ? "none" : fresh.Winner.ToString())}, units={fresh.Turns.Players[0].Units.Count}+{fresh.Turns.Players[1].Units.Count}, scenario={GameSetup.ScenarioName(fresh.State.Scenario)}, human={System.Linq.Enumerable.First(fresh.Turns.Players, p => p.IsHuman).Region.displayName}");
             yield return Shot("05_restart.png");
             Debug.Log("[AUTOPLAY] done");
             Application.Quit();

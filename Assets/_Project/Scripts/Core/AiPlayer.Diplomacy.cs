@@ -38,6 +38,7 @@ namespace Runeterra.Core
         {
             var ch = Personality(player.Index);
             int cities = _game.Cities.Count(c => c.OwnerIndex == player.Index);
+            if (_game.Diplomacy.WarsDisabled) return cities; // мирный сценарий: только стража городов
             if (_game.Diplomacy.EnemiesOf(player.Index).Any()) return (int)(cities * (3f + 2f * ch.Aggression)) + 3;
             bool preparing = _game.Diplomacy.ClaimsOf(player.Index).Any() || _game.Diplomacy.CoalitionTarget == player.Index;
             if (preparing) return (int)(cities * (1.8f + ch.Aggression + ch.Caution * 0.5f)) + 2;

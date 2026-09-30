@@ -29,6 +29,37 @@ namespace Runeterra.Core
         public Visibility Vision { get; }
         public Diplomacy Diplomacy { get; }
 
+        /// <summary>Сценарий и длина партии (после TurnLimit — подсчёт очков).</summary>
+        public Scenario Scenario { get; private set; } = Scenario.Historical1187;
+        public int TurnLimit { get; private set; } = 200;
+
+        public void Configure(Scenario scenario, int turnLimit)
+        {
+            Scenario = scenario;
+            TurnLimit = turnLimit;
+            Diplomacy.WarsDisabled = scenario == Scenario.PeacefulDevelopment;
+        }
+
+        /// <summary>
+        /// Очки развития: жители ×2, города ×10, узлы развития ×4, эпохи ×10, постройки ×2, районы ×3,
+        /// казна и резерв /20, доход от торговли (пошлины) /10.
+        /// </summary>
+        public int Score(PlayerState p)
+        {
+            var mine = Cities.Where(c => c.OwnerIndex == p.Index).ToList();
+            return mine.Sum(c => 2 * c.Population + 10 + 2 * c.Buildings.Values.Sum() + (c.HasMarket ? 3 : 0) + (c.HasPort ? 3 : 0)) +
+                   4 * p.Techs.Count + 10 * p.Epochs.Count + (Math.Max(0, p.Gold) + p.Reserve) / 20 + p.TradeIncomeTotal / 10;
+        }
+
+        /// <summary>Конец партии по сроку: побеждает сторона с наибольшими очками.</summary>
+        private void CheckTurnLimit(int turn)
+        {
+            if (Winner != null || turn <= TurnLimit) return;
+            var best = Players.Where(p => !IsEliminated(p)).OrderByDescending(Score).First();
+            Winner = best.Index;
+            GameOverText = $"Срок партии вышел ({TurnLimit} ходов): по очкам побеждает {best.Region.displayName} — {Score(best)}";
+        }
+
         /// <summary>Стороны воюют (только тогда можно атаковать, захватывать, грабить караваны).</summary>
         public bool AtWar(int a, int b) => Diplomacy.AtWar(a, b);
 
@@ -124,6 +155,7 @@ namespace Runeterra.Core
             Turns.NewTurnStarted += t =>
             {
                 Diplomacy.NewTurn(t);
+                CheckTurnLimit(t);
             };
         }
 
