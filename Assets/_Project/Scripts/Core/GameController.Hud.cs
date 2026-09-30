@@ -557,7 +557,7 @@ namespace Runeterra.Core
 
             var cards = new List<(string icon, string value, string title, string detail, string tip)>
             {
-                ("move", $"{u.MovesLeft}/{u.Data.movement}", "движение", u.MovesLeft > 0 ? "может ходить" : $"<color={CMuted}>сходил</color>", null),
+                ("move", $"{u.MovesLeft}/{u.MaxMoves}", "движение", u.MovesLeft > 0 ? "может ходить" : $"<color={CMuted}>сходил</color>", null),
                 ("hp", $"{u.Health}/{u.Data.maxHealth}", "здоровье",
                     u.Health < u.Data.maxHealth ? $"<color={CGood}>+{State.HealAmount(u)} за отдых</color>" : "полное",
                     u.Health < u.Data.maxHealth ? $"Без действий вылечится на +{State.HealAmount(u)}" : null),
@@ -868,7 +868,7 @@ namespace Runeterra.Core
                 var near = Cities.Where(c => c.OwnerIndex == human.Index).OrderBy(c => c.Coord.DistanceTo(u.Coord)).FirstOrDefault();
                 var where = near == null ? "" : near.Coord == u.Coord ? $"в {near.Data.displayName}" : $"{near.Coord.DistanceTo(u.Coord)} кл. от {near.Data.displayName}";
                 var label = $"{(u == _selected ? "» " : "")}<b>{u.Data.displayName}</b>{(u.Level > 0 ? $" ({u.LevelName})" : "")}  HP {u.Health}  " +
-                            (u.MovesLeft > 0 ? $"<color={CGood}>ход {u.MovesLeft}/{u.Data.movement}</color>" : $"<color={CMuted}>сходил</color>") +
+                            (u.MovesLeft > 0 ? $"<color={CGood}>ход {u.MovesLeft}/{u.MaxMoves}</color>" : $"<color={CMuted}>сходил</color>") +
                             $"  <size={Sz(11)}>{where}</size>";
                 if (GUI.Button(R(new Rect(0, i * rowH, view.width, rowH - 4)), label, Row))
                 {

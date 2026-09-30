@@ -97,7 +97,12 @@ namespace Runeterra.Units
             Acted = acted;
         }
 
-        public void ResetMoves() => MovesLeft = Data.movement;
+        /// <summary>Прибавка к движению (способность лидера); задаётся правилами при появлении юнита.</summary>
+        public int MovementBonus { get; set; }
+
+        public int MaxMoves => Data.movement + MovementBonus;
+
+        public void ResetMoves() => MovesLeft = MaxMoves;
 
         public void SpendAllMoves() => MovesLeft = 0;
 

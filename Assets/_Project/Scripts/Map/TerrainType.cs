@@ -1,5 +1,6 @@
 namespace Runeterra.Map
 {
+    /// <summary>Местность клетки. Новые значения — только в конец (в ассетах хранятся числом).</summary>
     public enum TerrainType
     {
         Ocean,
@@ -9,6 +10,9 @@ namespace Runeterra.Map
         Desert,
         Hills,
         Mountains,
+        /// <summary>Речная долина: плодородный пойменный берег реки.</summary>
+        River,
+        Marsh,
     }
 
     /// <summary>Объект на клетке поверх местности.</summary>
@@ -17,6 +21,20 @@ namespace Runeterra.Map
         None,
         Forest,
         Oasis,
+    }
+
+    /// <summary>Восемь биомов карты — по ним распределены ресурсы и специализация стран.</summary>
+    public enum Biome
+    {
+        Water,
+        Desert,
+        Oasis,
+        RiverValley,
+        Steppe,
+        Mountains,
+        Forest,
+        Coast,
+        Marsh,
     }
 
     public static class TerrainRules
@@ -31,7 +49,7 @@ namespace Runeterra.Map
         public static int MoveCost(TerrainType t, TileFeature f)
         {
             if (!t.IsPassable()) return Impassable;
-            int cost = t == TerrainType.Hills ? 2 : 1;
+            int cost = t == TerrainType.Hills || t == TerrainType.Marsh ? 2 : 1;
             if (f == TileFeature.Forest) cost += 1;
             return cost;
         }
@@ -41,5 +59,18 @@ namespace Runeterra.Map
             int cost = MoveCost(tile.Terrain, tile.Feature);
             return tile.HasRoad && cost != Impassable ? 1 : cost;
         }
+
+        public static string BiomeName(Biome b) => b switch
+        {
+            Biome.Desert => "Пустыня",
+            Biome.Oasis => "Оазис",
+            Biome.RiverValley => "Речная долина",
+            Biome.Steppe => "Степь",
+            Biome.Mountains => "Горы",
+            Biome.Forest => "Лес",
+            Biome.Coast => "Побережье",
+            Biome.Marsh => "Болото",
+            _ => "Море",
+        };
     }
 }

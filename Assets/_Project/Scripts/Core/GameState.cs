@@ -66,6 +66,7 @@ namespace Runeterra.Core
         /// <summary>Юнит из сохранения: в список игрока и на карту.</summary>
         internal void AttachUnit(PlayerState player, Unit unit)
         {
+            ApplyLeaderMovement(unit);
             unit.Promoted += u => Message?.Invoke($"{Name(u)} получает звание «{u.LevelName}» (+{u.Level * Unit.StrengthPerLevel} к силе)");
             player.Units.Add(unit);
             UnitCreated?.Invoke(unit);
@@ -120,6 +121,7 @@ namespace Runeterra.Core
         public int IncomeOf(PlayerState player)
         {
             int sum = Cities.Where(c => c.OwnerIndex == player.Index).Sum(CityGold);
+            if (player.Region.leaderAbility == LeaderAbility.ImperialTreasury) sum += Cities.Count(c => c.OwnerIndex == player.Index);
             return player.Epochs.Contains(TechSystem.EpochTrade) ? (int)Math.Round(sum * 1.1f) : sum;
         }
 
@@ -136,12 +138,13 @@ namespace Runeterra.Core
             city.Territory.Select(c => Grid.GetTile(c)).Where(t => t != null);
 
         /// <summary>
-        /// Излишек еды за ход: база города + половина «съедобных» клеток (луга, оазисы, побережье)
+        /// Излишек еды за ход: база города + половина «съедобных» клеток (луга, речные долины, оазисы, побережье)
         /// минус прокорм жителей (каждый житель сверх первого ест 1). Может быть отрицательным — голод.
         /// </summary>
         public int CityFood(City city) =>
             city.Data.food + TerritoryTiles(city).Count(t =>
-                t.Terrain == TerrainType.Grassland || t.Terrain == TerrainType.Coast || t.Feature == TileFeature.Oasis) / 2
+                t.Terrain == TerrainType.Grassland || t.Terrain == TerrainType.Coast || t.Terrain == TerrainType.River ||
+                t.Feature == TileFeature.Oasis) / 2
             - (city.Population - 1) - (int)Math.Ceiling(WaterDeficit(city));
 
         /// <summary>Производство за ход: база + население + половина холмов и лесов территории.</summary>
@@ -184,6 +187,7 @@ namespace Runeterra.Core
         {
             reason = null;
             if (item.Unit != null && item.Unit.canFoundCity && city.Population < 2) reason = "нужно население 2";
+            else if (item.Unit != null && MissingGoods(city, item.Unit.goodsCost) is string lackingForUnit) reason = lackingForUnit;
             else if (item.District != null && HasDistrict(city, item.District)) reason = "уже построен";
             else if (item.District != null && DistrictSpot(city, item.District) == null)
                 reason = item.District == Port ? "нет своей клетки у воды" : "нет места рядом";
@@ -235,11 +239,19 @@ namespace Runeterra.Core
         }
 
         /// <summary>Каких товаров не хватает на складе для постройки (null — всего хватает).</summary>
-        public string MissingGoods(City city, BuildingData building)
+        public string MissingGoods(City city, BuildingData building) => MissingGoods(city, building.goodsCost);
+
+        public string MissingGoods(City city, IEnumerable<GoodAmount> cost)
         {
-            var lacking = building.goodsCost.Where(g => g.good != null && !city.Warehouse.Has(g.good, g.amount))
+            var lacking = cost.Where(g => g.good != null && !city.Warehouse.Has(g.good, g.amount))
                 .Select(g => $"{g.good.displayName} {g.amount}").ToList();
             return lacking.Count == 0 ? null : "нужно: " + string.Join(", ", lacking);
+        }
+
+        private static void TakeGoods(City city, IEnumerable<GoodAmount> cost)
+        {
+            foreach (var g in cost)
+                if (g.good != null) city.Warehouse.Take(g.good, g.amount);
         }
 
         // ---------- Товары и сезоны ----------
@@ -285,9 +297,10 @@ namespace Runeterra.Core
 
         public const int BaseWater = 4;
 
-        /// <summary>Запас воды: 4 (колодцы во дворах) + 3 за оазис на территории + постройки.</summary>
+        /// <summary>Запас воды: 4 (колодцы во дворах) + 3 за оазис и 2 за клетку речной долины на территории + постройки.</summary>
         public int WaterCapacity(City city) =>
             BaseWater + 3 * TerritoryTiles(city).Count(t => t.Feature == TileFeature.Oasis) +
+            2 * TerritoryTiles(city).Count(t => t.Terrain == TerrainType.River) +
             city.Buildings.Sum(kv => (kv.Key.waterBonus + (kv.Key.id == "canal" && OwnerOf(city).Has("canals") ? 2 : 0)) * kv.Value) +
             (OwnerOf(city).Has("wells") ? 1 : 0);
 
@@ -803,6 +816,7 @@ namespace Runeterra.Core
                 var spot = SpawnSpot(city);
                 if (spot == null) return; // ждём, пока освободится место
                 if (item.Unit.canFoundCity) LosePopulation(city, "ушли поселенцы");
+                TakeGoods(city, item.Unit.goodsCost);
                 var unit = Spawn(item.Unit, player, spot.Value);
                 unit.SpendAllMoves();
                 ArmFromCity(unit, city);
@@ -951,6 +965,7 @@ namespace Runeterra.Core
 
         private void Capture(City city, int newOwner)
         {
+            int oldOwner = city.OwnerIndex;
             var oldRegion = Players[city.OwnerIndex].Region;
             var newRegion = Players[newOwner].Region;
             city.OwnerIndex = newOwner;
@@ -965,11 +980,32 @@ namespace Runeterra.Core
             CityChanged?.Invoke(city);
             Message?.Invoke($"{newRegion.displayName} захватывает город {city.Data.displayName} ({oldRegion.displayName})");
 
-            if (city.IsCapital && city.FounderIndex != newOwner && Winner == null)
+            // Шесть сторон: падение столицы игрока — поражение; остальные стороны воюют, пока у них есть города.
+            if (city.IsCapital && city.FounderIndex != newOwner && Players[city.FounderIndex].IsHuman && Winner == null)
             {
                 Winner = newOwner;
                 GameOverText = $"{newRegion.displayName} захватывает столицу {city.Data.displayName}";
             }
+            CheckElimination(Players[oldOwner]);
+            var human = Players.FirstOrDefault(p => p.IsHuman);
+            if (Winner == null && human != null && Players.Where(p => p != human).All(IsEliminated))
+            {
+                Winner = human.Index;
+                GameOverText = $"{human.Region.displayName} покоряет все державы";
+            }
+        }
+
+        /// <summary>Сторона выбыла: у неё не осталось городов.</summary>
+        public bool IsEliminated(PlayerState p) => !Cities.Any(c => c.OwnerIndex == p.Index);
+
+        /// <summary>Потерявшая последний город сторона выбывает: войско расходится, караваны пропадают.</summary>
+        private void CheckElimination(PlayerState p)
+        {
+            if (!IsEliminated(p)) return;
+            foreach (var u in p.Units.ToList()) u.Consume();
+            Turns.RemoveDead();
+            Trade.RemoveOwner(p.Index);
+            Message?.Invoke($"{p.Region.displayName} теряет последний город и сходит со сцены");
         }
 
         // ---------- Бой ----------
@@ -991,7 +1027,8 @@ namespace Runeterra.Core
 
         public int CityStrength(City city)
         {
-            int s = City.BaseStrength + (city.IsCapital ? City.CapitalStrengthBonus : 0) + (OwnerOf(city).Has("fortifications") ? 5 : 0);
+            int s = City.BaseStrength + (city.IsCapital ? City.CapitalStrengthBonus : 0) + (OwnerOf(city).Has("fortifications") ? 5 : 0) +
+                    (OwnerOf(city).Region.leaderAbility == LeaderAbility.MosulCitadel ? MosulCitadelStrength : 0);
             var garrison = UnitAt(city.Coord);
             if (garrison != null && garrison.OwnerIndex == city.OwnerIndex && garrison.MeleeStrength > 0) s += 5;
             return s;
@@ -1135,7 +1172,12 @@ namespace Runeterra.Core
 
         /// <summary>Лечение юнита, который не действовал в прошлый ход.</summary>
         public const int MercyHeal = 10;
+        public const int MosulCitadelStrength = 5;
         public const int LionheartAttack = 3;
+
+        /// <summary>Кылыч-Арслан II: конница +1 к движению (пересчитывается и при загрузке).</summary>
+        private void ApplyLeaderMovement(Unit unit) =>
+            unit.MovementBonus = unit.Data.mounted && Players[unit.OwnerIndex].Region.leaderAbility == LeaderAbility.SteppeRiders ? 1 : 0;
 
         public int HealAmount(Unit unit)
         {
@@ -1196,6 +1238,7 @@ namespace Runeterra.Core
             if (Winner != null) reason = "партия окончена";
             else if (city.OwnerIndex != player.Index) reason = "чужой город";
             else if (data.canFoundCity && city.Population < 2) reason = "нужно население 2";
+            else if (MissingGoods(city, data.goodsCost) is string lacking) reason = lacking;
             else if (player.Gold < BuyCost(player, data)) reason = "не хватает золота";
             else if (SpawnSpot(city) == null) reason = "нет места рядом с городом";
             return reason == null;
@@ -1207,6 +1250,7 @@ namespace Runeterra.Core
             if (!CanBuy(player, city, data, out _)) return null;
             player.Gold -= BuyCost(player, data);
             if (data.canFoundCity) LosePopulation(city, "ушли поселенцы");
+            TakeGoods(city, data.goodsCost);
             var unit = Spawn(data, player, SpawnSpot(city).Value);
             unit.SpendAllMoves();
             ArmFromCity(unit, city);
@@ -1233,6 +1277,7 @@ namespace Runeterra.Core
             var unit = new Unit(data, player.Index, coord);
             unit.BonusStrength += Tech.NewUnitBonus(player, unit);
             if (player.Region.leaderAbility == LeaderAbility.Lionheart && CanFight(unit)) unit.AttackBonus = LionheartAttack;
+            ApplyLeaderMovement(unit);
             unit.Promoted += u => Message?.Invoke($"{Name(u)} получает звание «{u.LevelName}» (+{u.Level * Unit.StrengthPerLevel} к силе)");
             player.Units.Add(unit);
             UnitCreated?.Invoke(unit);

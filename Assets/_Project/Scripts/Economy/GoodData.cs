@@ -29,9 +29,15 @@ namespace Runeterra.Economy
         [Tooltip("Множитель выхода по сезонам: посев, урожай, засуха, торговый")]
         public float[] seasonMultipliers = { 1f, 1f, 1f, 1f };
 
-        public bool IsRaw => sourceTerrain.Count > 0 || sourceFeatures.Count > 0;
+        [Tooltip("Региональный ресурс: добывается только на клетках с месторождением (HexTile.Resource == id)")]
+        public bool fromDeposit;
+        [Tooltip("Цвет значка месторождения на карте")]
+        public Color depositColor = Color.white;
+
+        public bool IsRaw => sourceTerrain.Count > 0 || sourceFeatures.Count > 0 || fromDeposit;
 
         public bool FromTile(HexTile tile) =>
+            (fromDeposit && tile.Resource == id) ||
             sourceTerrain.Contains(tile.Terrain) || (tile.Feature != TileFeature.None && sourceFeatures.Contains(tile.Feature));
 
         public float SeasonMultiplier(Season s) =>

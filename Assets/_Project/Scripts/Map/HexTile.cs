@@ -16,6 +16,9 @@ namespace Runeterra.Map
         /// <summary>По клетке проложена дорога: ход стоит 1, караваны идут быстрее.</summary>
         public bool HasRoad { get; set; }
 
+        /// <summary>Месторождение регионального ресурса (id товара) или null.</summary>
+        public string Resource { get; set; }
+
         /// <summary>id города на клетке или null.</summary>
         public string CityId { get; set; }
 

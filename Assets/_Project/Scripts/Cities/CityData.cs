@@ -21,6 +21,11 @@ namespace Runeterra.Cities
         [Tooltip("Смещение от стартовой точки региона на гекс-карте (осевые q, r)")]
         public HexCoord startOffset;
         [Min(1)] public int startingPopulation = 1;
+        [Tooltip("Географическое положение (если задано — город ставится по нему, а не по смещению)")]
+        public float lon;
+        public float lat;
+
+        public bool HasGeo => lat != 0f;
 
         [Header("Базовый доход за ход")]
         public int food = 2;

@@ -424,10 +424,10 @@ namespace Runeterra.Core
         {
             turnOfStep = new List<int>();
             int turn = 1, moves = unit.MovesLeft;
-            if (moves <= 0) { turn = 2; moves = unit.Data.movement; }
+            if (moves <= 0) { turn = 2; moves = unit.MaxMoves; }
             foreach (var step in path)
             {
-                if (moves <= 0) { turn++; moves = unit.Data.movement; }
+                if (moves <= 0) { turn++; moves = unit.MaxMoves; }
                 moves = Mathf.Max(0, moves - map.Grid.GetTile(step).MoveCost());
                 turnOfStep.Add(turn);
             }

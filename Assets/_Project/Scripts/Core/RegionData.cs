@@ -13,6 +13,14 @@ namespace Runeterra.Core
         Mercy,
         /// <summary>Ричард Львиное Сердце: юниты сильнее в атаке.</summary>
         Lionheart,
+        /// <summary>Исаак II Ангел: +1 золота с каждого города.</summary>
+        ImperialTreasury,
+        /// <summary>Кылыч-Арслан II: конные юниты +1 к движению.</summary>
+        SteppeRiders,
+        /// <summary>Ан-Насир: +25% знаний.</summary>
+        HouseOfWisdom,
+        /// <summary>Изз ад-Дин Масуд: города +5 к силе.</summary>
+        MosulCitadel,
     }
 
     /// <summary>Облик юнитов региона.</summary>
@@ -53,6 +61,10 @@ namespace Runeterra.Core
 
         [Tooltip("Названия для новых городов, по порядку")]
         public List<string> cityNames = new List<string>();
+
+        [Header("Хозяйство")]
+        [Tooltip("Региональные ресурсы страны: у столицы и городов гарантированы месторождения")]
+        public List<Runeterra.Economy.GoodData> specialties = new List<Runeterra.Economy.GoodData>();
 
         public CityData Capital => cities.Find(c => c != null && c.isCapital);
     }

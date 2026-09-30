@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Runeterra.Economy;
 using UnityEngine;
 
 namespace Runeterra.Units
@@ -34,6 +36,10 @@ namespace Runeterra.Units
         [Min(0)] public int buildCharges;
         [Tooltip("Может основать город (поселенец)")]
         public bool canFoundCity;
+        [Tooltip("Товары со склада города, которые уходят на найм (кони, железо…)")]
+        public List<GoodAmount> goodsCost = new List<GoodAmount>();
+        [Tooltip("Конный юнит (фигурка верхом)")]
+        public bool mounted;
 
         [Header("Дальний бой")]
         [Min(0)] public int rangedStrength;

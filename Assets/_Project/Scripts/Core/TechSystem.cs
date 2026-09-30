@@ -34,6 +34,7 @@ namespace Runeterra.Core
                 .Sum(c => 1f + c.Population / 3f + (p.Has("schools") ? 1f : 0f) + (p.Has("astrolabe") && c.HasPort ? 2f : 0f));
             if (p.Has("libraries")) s *= 1.25f;
             if (p.Epochs.Contains(EpochKnowledge)) s *= 1.2f;
+            if (p.Region.leaderAbility == LeaderAbility.HouseOfWisdom) s *= 1.25f;
             return (int)Math.Round(s);
         }
 
