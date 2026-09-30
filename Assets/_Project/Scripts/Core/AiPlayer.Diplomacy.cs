@@ -38,7 +38,8 @@ namespace Runeterra.Core
         {
             var ch = Personality(player.Index);
             int cities = _game.Cities.Count(c => c.OwnerIndex == player.Index);
-            if (_game.Diplomacy.WarsDisabled) return cities; // мирный сценарий: только стража городов
+            // Мирный сценарий: стража городов, при переполненной казне — по два воина на город.
+            if (_game.Diplomacy.WarsDisabled) return player.Gold > SurplusGold ? cities * 2 : cities;
             if (_game.Diplomacy.EnemiesOf(player.Index).Any()) return (int)(cities * (3f + 2f * ch.Aggression)) + 3;
             bool preparing = _game.Diplomacy.ClaimsOf(player.Index).Any() || _game.Diplomacy.CoalitionTarget == player.Index;
             if (preparing) return (int)(cities * (1.8f + ch.Aggression + ch.Caution * 0.5f)) + 2;
@@ -74,7 +75,8 @@ namespace Runeterra.Core
                 bool losing = BlocStrength(me) * (1f + 0.3f * ch.Caution) < BlocStrength(enemy);
                 bool tired = turns >= 10 + (int)(25 * ch.Aggression);
                 bool lostCities = _game.Cities.Any(c => c.FounderIndex == me && c.OwnerIndex == enemy);
-                if (!(losing && turns >= 5) && !tired && !(lostCities && ch.Caution > 0.6f && turns >= 5)) continue;
+                // У одной из сторон остался последний город — мир, чтобы сторона не исчезла.
+                if (!(losing && turns >= 5) && !tired && !(lostCities && ch.Caution > 0.6f && turns >= 5) && !LastCity(me) && !LastCity(enemy)) continue;
                 OfferPeace(me, enemy);
             }
 
@@ -85,6 +87,7 @@ namespace Runeterra.Core
                 {
                     var city = d.CityById(claim.CityId);
                     int target = city.OwnerIndex;
+                    if (LastCity(target)) continue;
                     bool coalition = d.InCoalition(me) && d.CoalitionTarget == target;
                     float ratio = ch.WarRatio - (coalition ? 0.3f : 0f) - (claim.CityId == ch.GoalCity ? 0.1f : 0f);
                     if (d.Opinion(me, target) > 20 + (int)(30 * ch.Aggression)) continue;
@@ -108,7 +111,8 @@ namespace Runeterra.Core
                 var mine = _game.Cities.Where(c => c.OwnerIndex == me).ToList();
                 var goal = ch.GoalCity != null ? d.CityById(ch.GoalCity) : null;
                 City pick = goal != null && d.CanFabricate(me, goal) == null && d.StanceOf(me, goal.OwnerIndex) != Stance.Alliance ? goal : null;
-                pick ??= _game.Cities.Where(c => c.OwnerIndex != me && d.CanFabricate(me, c) == null &&
+                if (pick != null && LastCity(pick.OwnerIndex)) pick = null;
+                pick ??= _game.Cities.Where(c => c.OwnerIndex != me && !LastCity(c.OwnerIndex) && d.CanFabricate(me, c) == null &&
                                                  d.StanceOf(me, c.OwnerIndex) != Stance.Alliance &&
                                                  (d.Opinion(me, c.OwnerIndex) < 10 || (d.InCoalition(me) && d.CoalitionTarget == c.OwnerIndex)))
                     .OrderBy(c => d.InCoalition(me) && d.CoalitionTarget == c.OwnerIndex ? 0 : 1)
@@ -170,6 +174,9 @@ namespace Runeterra.Core
             return needed;
         }
 
+        /// <summary>У стороны остался один город (или ни одного).</summary>
+        private bool LastCity(int player) => _game.Cities.Count(c => c.OwnerIndex == player) <= 1;
+
         private void OfferPeace(int me, int enemy)
         {
             var d = _game.Diplomacy;
@@ -214,7 +221,8 @@ namespace Runeterra.Core
             {
                 case ProposalKind.Peace:
                     if (d.CanMakePeace(who, from) != null) return false;
-                    return BlocStrength(who) < BlocStrength(from) * (1.2f + 0.6f * (1f - ch.Aggression)) ||
+                    return LastCity(who) || LastCity(from) ||
+                           BlocStrength(who) < BlocStrength(from) * (1.2f + 0.6f * (1f - ch.Aggression)) ||
                            d.WarTurns(who, from) >= 10 + (int)(25 * ch.Aggression);
                 case ProposalKind.TradeAgreement:
                     return _game.Trade.CanSignAgreement(who, from) == null && d.Opinion(who, from) >= -(int)(30 * ch.Trade);

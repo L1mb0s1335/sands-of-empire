@@ -66,6 +66,7 @@ namespace Runeterra.Core
             ManageTreasury(player);
             ChooseProduction(player);
             Shop(player);
+            SpendSurplus(player);
         }
 
         private Plan MakePlan(PlayerState player)
@@ -109,7 +110,7 @@ namespace Runeterra.Core
                 bool settling = player.Units.Any(u => u.Data.canFoundCity) || cities.Any(c => c.CurrentBuild?.Unit?.canFoundCity == true);
                 var settler = _shop.FirstOrDefault(d => d.canFoundCity);
                 BuildItem item = null;
-                int desired = Personality(player.Index).Goal == AiGoal.Growth ? DesiredCities + 2 : DesiredCities;
+                int desired = (Personality(player.Index).Goal == AiGoal.Growth ? DesiredCities + 2 : DesiredCities) + SurplusCities(player);
                 if (settler != null && !settling && cities.Count < desired && city.Population >= 2 && FindCitySpot(player, city.Coord) != null)
                     item = new BuildItem(settler);
                 else if (_market != null && !city.HasMarket && _game.CanBuild(city, new BuildItem(_market), out _))
@@ -195,12 +196,15 @@ namespace Runeterra.Core
         private void ManageTreasury(PlayerState player)
         {
             bool rich = player.Gold > 250 && !_game.Diplomacy.EnemiesOf(player.Index).Any();
-            player.LandTax = rich ? 0.05f : 0.1f;
+            // Казна переполнена — земельный налог снимаем совсем.
+            player.LandTax = player.Gold > SurplusGold && rich ? 0f : rich ? 0.05f : 0.1f;
             player.PeopleTax = rich ? 0f : 0.05f;
             player.LuxuryTax = 0.1f;
             if (rich && player.Reserve < 80) { player.Gold -= 20; player.Reserve += 20; }
             // Торговый характер держит пошлину ниже — купцов больше.
             player.Tariff = (float)System.Math.Round(0.15f - 0.1f * Personality(player.Index).Trade, 2);
+            // Казна ломится — пошлину и налог на роскошь снимаем: главный доход богатых стран — пошлины с караванов.
+            if (player.Gold > 3 * SurplusGold) { player.Tariff = 0f; player.LuxuryTax = 0f; }
             if (player.Reserve < 30 && player.Gold >= 70) { player.Gold -= 10; player.Reserve += 10; }
 
             // Займы: берём, когда враг у ворот, а казна пуста; возвращаем при избытке золота.
@@ -210,6 +214,44 @@ namespace Runeterra.Core
             char rating = _game.CreditRating(player);
             if (threatened && player.Gold < 40 && (rating == 'A' || rating == 'B')) _game.Borrow(player);
             else if (!threatened && player.Debt > 0 && player.Gold > 120) _game.Repay(player);
+        }
+
+        /// <summary>Выше этой суммы золото в мирное время считается лишним.</summary>
+        public const int SurplusGold = 300;
+
+        /// <summary>Богатая казна в мирное время — ещё два города сверх обычного (новому городу есть что строить).</summary>
+        private int SurplusCities(PlayerState player) =>
+            player.Gold > SurplusGold && !_game.Diplomacy.EnemiesOf(player.Index).Any() ? 2 : 0;
+
+        /// <summary>
+        /// Лишнее золото в мирное время: резерв на засуху и пожары (до 40 на город),
+        /// закупка потребительских товаров, которых не хватает столице, у небогатых соседей.
+        /// </summary>
+        private void SpendSurplus(PlayerState player)
+        {
+            if (player.Gold <= SurplusGold || _game.Diplomacy.EnemiesOf(player.Index).Any()) return;
+            int cities = _game.Cities.Count(c => c.OwnerIndex == player.Index);
+            int reserveGoal = 40 * cities + 40;
+            if (player.Reserve < reserveGoal)
+            {
+                int put = System.Math.Min(System.Math.Min(50, reserveGoal - player.Reserve), player.Gold - SurplusGold);
+                player.Gold -= put;
+                player.Reserve += put;
+            }
+
+            var capital = _game.CapitalOf(player);
+            if (capital == null) return;
+            var t = _game.Trade;
+            foreach (var good in _game.Goods.Where(g => g.consumedPerPop > 0f).OrderByDescending(g => t.Price(capital, g) / g.basePrice))
+            {
+                if (player.Gold <= SurplusGold) break;
+                if (t.Price(capital, good) < good.basePrice) continue;
+                // Покупаем у тех, кому золото нужно: богатому продавцу его тоже не на что тратить.
+                var seller = _game.Players.Where(p => p.Index != player.Index && !p.IsHuman && p.Gold < SurplusGold && t.CanBuy(player.Index, p.Index, good) == null &&
+                                                      t.SellerAgrees(p.Index, player.Index, good))
+                    .OrderBy(p => t.DealBuyCost(p.Index, good)).FirstOrDefault();
+                if (seller != null && player.Gold - t.DealBuyCost(seller.Index, good) >= SurplusGold / 2) t.Buy(player.Index, seller.Index, good);
+            }
         }
 
         /// <summary>Город без защитника, к которому подошёл враг, призывает ополчение.</summary>
@@ -244,7 +286,7 @@ namespace Runeterra.Core
             // Лишнее золото — на поселенцев, пока есть куда расти.
             var settler = _shop.FirstOrDefault(d => d.canFoundCity);
             int cities = _game.Cities.Count(c => c.OwnerIndex == player.Index);
-            int desired = Personality(player.Index).Goal == AiGoal.Growth ? DesiredCities + 2 : DesiredCities + 1;
+            int desired = (Personality(player.Index).Goal == AiGoal.Growth ? DesiredCities + 2 : DesiredCities + 1) + SurplusCities(player);
             if (settler != null && player.Gold > 200 && cities < desired && !player.Units.Any(u => u.Data.canFoundCity))
             {
                 var from = _game.Cities.Where(c => c.OwnerIndex == player.Index && c.Population >= 3 && FindCitySpot(player, c.Coord) != null)
