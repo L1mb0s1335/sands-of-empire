@@ -423,8 +423,16 @@ namespace Runeterra.Core
             float avg = (float)alive.Where(p => p != top).Average(p => scores[p.Index]);
             int topCities = _game.Cities.Count(c => c.OwnerIndex == top.Index);
 
-            if (CoalitionTarget >= 0 && (CoalitionTarget != top.Index || scores[top.Index] < avg * 1.3f)) Dissolve();
-            if (CoalitionTarget < 0 && scores[top.Index] >= avg * CoalitionRatio && topCities >= 5)
+            // Коалиция держится, пока её цель заметно сильнее остальных; сменить цель можно только
+            // если новый лидер обогнал её на 20% (иначе коалиции мелькают от хода к ходу).
+            if (CoalitionTarget >= 0)
+            {
+                var others = alive.Where(p => p.Index != CoalitionTarget).ToList();
+                float avgOthers = (float)others.Average(p => scores[p.Index]);
+                bool overtaken = top.Index != CoalitionTarget && scores[top.Index] > scores[CoalitionTarget] * 1.2f;
+                if (overtaken || scores[CoalitionTarget] < avgOthers * 1.3f || _game.IsEliminated(_game.Players[CoalitionTarget])) Dissolve();
+            }
+            if (CoalitionTarget < 0 && turn >= _coalitionCooldown && scores[top.Index] >= avg * CoalitionRatio && topCities >= 5)
             {
                 CoalitionTarget = top.Index;
                 _game.Report($"Коалиция против сильнейшего: соседи объединяются против {Name(top.Index)}");
@@ -435,11 +443,16 @@ namespace Runeterra.Core
                 if (p.Index != CoalitionTarget && !p.IsHuman && !Allied(p.Index, CoalitionTarget)) Coalition.Add(p.Index);
         }
 
+        /// <summary>После распада новая коалиция собирается не раньше чем через 5 ходов.</summary>
+        internal int CoalitionCooldown { get => _coalitionCooldown; set => _coalitionCooldown = value; }
+        private int _coalitionCooldown;
+
         private void Dissolve()
         {
             if (CoalitionTarget < 0) return;
             _game.Report($"Коалиция против {Name(CoalitionTarget)} распалась");
             CoalitionTarget = -1;
+            _coalitionCooldown = _game.Turns.Turn + 5;
             Coalition.Clear();
         }
 

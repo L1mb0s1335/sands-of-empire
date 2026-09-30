@@ -852,9 +852,9 @@ namespace Runeterra.Core
 
         private void GrowAndProduce(PlayerState player, City city)
         {
-            Perf.Measure("c.tier", () => UpdateTierAndDisasters(city));
-            Perf.Measure("c.goods", () => ProcessGoods(city));
-            city.FoodStock += Perf.Measure("c.food", () => CityFood(city));
+            UpdateTierAndDisasters(city);
+            ProcessGoods(city);
+            city.FoodStock += CityFood(city);
             if (city.FoodStock < 0)
             {
                 city.FoodStock = 0;
@@ -871,7 +871,7 @@ namespace Runeterra.Core
 
             var item = city.CurrentBuild;
             if (item == null) return;
-            if (!Perf.Measure("c.canbuild", () => CanBuild(city, item, out _)) && !CanBuild(city, item, out var reason))
+            if (!CanBuild(city, item, out var reason))
             {
                 // Например, рынок уже поставил строитель — снимаем заказ, накопленное сохраняем.
                 if ((item.District != null && HasDistrict(city, item.District)) || (item.Building != null && city.IsFull(item.Building)))
@@ -1026,11 +1026,8 @@ namespace Runeterra.Core
             // Обзор меняется у того, кто ходил; игроку-человеку — чтобы видеть чужие отряды в движении.
             finally
             {
-                Perf.Measure("vision", () =>
-                {
-                    Vision.Refresh(Players[unit.OwnerIndex]);
-                    foreach (var p in Players) if (p.IsHuman && p.Index != unit.OwnerIndex) Vision.Refresh(p);
-                });
+                Vision.Refresh(Players[unit.OwnerIndex]);
+                foreach (var p in Players) if (p.IsHuman && p.Index != unit.OwnerIndex) Vision.Refresh(p);
             }
         }
 
@@ -1311,17 +1308,14 @@ namespace Runeterra.Core
                 if (!unit.Acted) unit.Heal(HealAmount(unit));
                 unit.ClearActed();
             }
-            Perf.Measure("cities", () =>
+            foreach (var city in Cities.Where(c => c.OwnerIndex == player.Index).ToList())
             {
-                foreach (var city in Cities.Where(c => c.OwnerIndex == player.Index).ToList())
-                {
-                    city.BeginOwnerTurn(player.Has("fortifications") ? 10 : 0, IsBlockaded(city));
-                    GrowAndProduce(player, city);
-                }
-            });
-            Perf.Measure("trade", () => Trade.PlayTurn(player));
+                city.BeginOwnerTurn(player.Has("fortifications") ? 10 : 0, IsBlockaded(city));
+                GrowAndProduce(player, city);
+            }
+            Trade.PlayTurn(player);
             CollectTaxes(player);
-            Perf.Measure("tech", () => Tech.PlayTurn(player));
+            Tech.PlayTurn(player);
             CitiesShoot(player);
         }
 

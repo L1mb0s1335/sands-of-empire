@@ -49,7 +49,8 @@ namespace Runeterra.Core
             Debug.Log($"[AUTOPLAY] screenshot {name}");
         }
 
-        private bool _saveTested;
+        /// <summary>Ход последней проверки сохранения (20 — начало, 70 — войны, претензии, соглашения).</summary>
+        private int _savedAt;
 
         /// <summary>
         /// Сохранить партию, выйти в главное меню, нажать «Загрузить» и сравнить состояние
@@ -135,9 +136,9 @@ namespace Runeterra.Core
             while (game.Winner == null && game.Turns.Turn <= game.State.TurnLimit + 2)
             {
                 while (game.Busy) yield return null;
-                if (game.Turns.Turn == 20 && !_saveTested)
+                if ((game.Turns.Turn == 20 || game.Turns.Turn == 70) && _savedAt != game.Turns.Turn)
                 {
-                    _saveTested = true;
+                    _savedAt = game.Turns.Turn;
                     GameController loaded = null;
                     yield return SaveLoadCheck(game, g => loaded = g);
                     game = loaded;
@@ -184,7 +185,7 @@ namespace Runeterra.Core
                 Debug.Log($"[AUTOPLAY] turn {game.Turns.Turn}: units " +
                           string.Join(" / ", System.Linq.Enumerable.Select(game.Turns.Players, p => $"{p.Region.displayName}={p.Units.Count}")) +
                           $" | cities {string.Join("/", System.Linq.Enumerable.Select(game.Turns.Players, p => System.Linq.Enumerable.Count(game.Cities, c => c.OwnerIndex == p.Index)))}" +
-                          $" | wars {game.State.WarSummary()} | ai {game.LastAiRoundMs} ms | {Perf.Dump()}");
+                          $" | wars {game.State.WarSummary()} | ai {game.LastAiRoundMs} ms");
             }
             Time.timeScale = 1f;
             while (game.Busy) yield return null;

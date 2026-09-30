@@ -21,6 +21,9 @@ namespace Runeterra.Core
         public static string SavePath => Path.Combine(Application.persistentDataPath, "save.json");
         public static bool HasSave => File.Exists(SavePath);
 
+        /// <summary>Версия формата: 3 — шесть сторон, дипломатия, торговля между странами, сценарии.</summary>
+        public const int CurrentVersion = 3;
+
         /// <summary>Сохранение, которое нужно загрузить при старте сцены партии (null — новая игра).</summary>
         public static SaveData PendingLoad { get; set; }
 
@@ -28,7 +31,7 @@ namespace Runeterra.Core
 
         [Serializable] public class SaveData
         {
-            public int version = 3;
+            public int version = CurrentVersion;
             public int scenario, turnLimit = 200;
             public string humanRegion;
             public int mapRadius, seed;
@@ -45,7 +48,7 @@ namespace Runeterra.Core
             public List<RelationSave> relations = new List<RelationSave>();
             public List<ClaimSave> claims = new List<ClaimSave>();
             public List<ProposalSave> proposals = new List<ProposalSave>();
-            public int coalitionTarget = -1;
+            public int coalitionTarget = -1, coalitionCooldown;
             public List<int> coalition = new List<int>();
             public List<RelationSave> agreements = new List<RelationSave>();
             public List<RelationSave> embargoes = new List<RelationSave>();
@@ -273,6 +276,7 @@ namespace Runeterra.Core
             d.embargoes = s.Trade.EmbargoSet.OrderBy(x => x).Select(x => new RelationSave { a = x.Item1, b = x.Item2 }).ToList();
             d.importAccum = s.Trade.ImportAccum.OrderBy(x => x.Key).Select(x => new RelationSave { a = x.Key, value = x.Value }).ToList();
             d.coalitionTarget = s.Diplomacy.CoalitionTarget;
+            d.coalitionCooldown = s.Diplomacy.CoalitionCooldown;
             d.coalition = s.Diplomacy.Coalition.OrderBy(x => x).ToList();
             d.proposals = s.Diplomacy.Proposals.Select(p => new ProposalSave { from = p.From, kind = (int)p.Kind, turn = p.Turn }).ToList();
             return d;
@@ -293,7 +297,17 @@ namespace Runeterra.Core
         public static SaveData Read()
         {
             if (!HasSave) return null;
-            try { return JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath)); }
+            try
+            {
+                var d = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+                // Сохранения до шести сторон и сценариев несовместимы с новой картой.
+                if (d.version < CurrentVersion)
+                {
+                    Debug.LogWarning($"Сохранение версии {d.version} устарело (нужна {CurrentVersion})");
+                    return null;
+                }
+                return d;
+            }
             catch (Exception e)
             {
                 Debug.LogWarning($"Не удалось прочитать сохранение: {e.Message}");
@@ -426,6 +440,7 @@ namespace Runeterra.Core
             foreach (var x in d.embargoes) s.Trade.EmbargoSet.Add((x.a, x.b));
             foreach (var x in d.importAccum) s.Trade.ImportAccum[x.a] = x.value;
             s.Diplomacy.CoalitionTarget = d.coalitionTarget;
+            s.Diplomacy.CoalitionCooldown = d.coalitionCooldown;
             s.Diplomacy.Coalition.UnionWith(d.coalition);
             foreach (var p in d.proposals)
                 s.Diplomacy.Proposals.Add(new Proposal { From = p.from, Kind = (ProposalKind)p.kind, Turn = p.turn });

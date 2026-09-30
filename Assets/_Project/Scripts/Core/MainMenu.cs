@@ -14,6 +14,7 @@ namespace Runeterra.Core
         public string title = "Runeterra 4X";
 
         private bool _setup;
+        private string _message;
         private readonly GameSetup _choice = new GameSetup();
 
         /// <summary>Стороны партии (id регионов сцены партии), имена лидеров и цвета для выбора в меню.</summary>
@@ -49,8 +50,10 @@ namespace Runeterra.Core
             float x = r.x + 50, w = r.width - 100;
             if (Button(new Rect(x, r.y + 36, w, 56), "Новая игра", BtnBig)) _setup = true;
             GUI.enabled = SaveSystem.HasSave;
-            if (Button(new Rect(x, r.y + 108, w, 56), "Загрузить", BtnBig)) LoadGame();
+            if (Button(new Rect(x, r.y + 108, w, 56), "Загрузить", BtnBig) && !LoadGame())
+                _message = "Сохранение от старой версии игры — начните новую партию";
             GUI.enabled = true;
+            if (_message != null) Label(new Rect(r.x, r.yMax + 16, r.width, 26), _message, CenterLight);
             if (Button(new Rect(x, r.y + 180, w, 56), "Выход", BtnBig)) Quit();
         }
 
