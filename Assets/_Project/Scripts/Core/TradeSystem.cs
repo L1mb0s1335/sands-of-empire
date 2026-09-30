@@ -84,7 +84,7 @@ namespace Runeterra.Core
         /// <summary>Морской путь от порта до края карты (выход к заморскому рынку).</summary>
         public List<HexCoord> ExportRoute(HexCoord port)
         {
-            var edge = _game.Grid.Tiles.Where(t => t.Terrain == TerrainType.Ocean && t.Coord.DistanceTo(default) == _game.Grid.Radius)
+            var edge = _game.Grid.Tiles.Where(t => t.Terrain == TerrainType.Ocean && _game.Grid.IsEdge(t.Coord))
                 .OrderBy(t => t.Coord.DistanceTo(port)).FirstOrDefault();
             return edge == null ? null : SeaRoute(port, edge.Coord);
         }
@@ -280,6 +280,16 @@ namespace Runeterra.Core
             Caravans.Remove(c);
             Finished?.Invoke(c, delivered);
             _game.Report($"Караван {c.From.Data.displayName} → {c.DestinationName}: {what}");
+        }
+
+        /// <summary>Сторона сошла со сцены: её караваны пропадают.</summary>
+        public void RemoveOwner(int owner)
+        {
+            foreach (var c in Caravans.Where(c => c.OwnerIndex == owner).ToList())
+            {
+                Caravans.Remove(c);
+                Finished?.Invoke(c, false);
+            }
         }
 
         /// <summary>Сколько караванов этого игрока в пути.</summary>

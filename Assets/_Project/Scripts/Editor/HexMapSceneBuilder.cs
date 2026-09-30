@@ -38,13 +38,14 @@ namespace Runeterra.EditorTools
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             var camera = Camera.main;
-            camera.gameObject.AddComponent<HexCameraController>();
+            camera.gameObject.AddComponent<HexCameraController>().maxDistance = 60f;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.62f, 0.72f, 0.80f);
             camera.farClipPlane = 200f;
 
             var map = new GameObject("HexMap").AddComponent<HexMapView>();
             map.baseMaterial = material;
+            map.mapRadius = 27; // 55×39 гексов: от Атталии до Загроса, от Синая до Армянского нагорья
             const string fogPath = "Assets/_Project/Art/Materials/FogOverlay.mat";
             var fog = AssetDatabase.LoadAssetAtPath<Material>(fogPath);
             if (fog == null)
@@ -56,8 +57,9 @@ namespace Runeterra.EditorTools
             map.mapCamera = camera;
             foreach (var guid in AssetDatabase.FindAssets("t:RegionData", new[] { RegionsFolder }))
                 map.regions.Add(AssetDatabase.LoadAssetAtPath<RegionData>(AssetDatabase.GUIDToAssetPath(guid)));
-            // Первый регион — игрок (Палестина), остальные — ИИ.
-            map.regions.Sort((a, b) => (b.id == "palestine").CompareTo(a.id == "palestine"));
+            // Первый регион — игрок (Палестина), остальные — ИИ в историческом порядке.
+            var order = new[] { "palestine", "jerusalem_kingdom", "byzantium", "rum", "abbasids", "mosul" };
+            map.regions.Sort((a, b) => Rank(order, a.id).CompareTo(Rank(order, b.id)));
 
             var game = new GameObject("Game").AddComponent<GameController>();
             game.map = map;
@@ -87,6 +89,12 @@ namespace Runeterra.EditorTools
             };
             AssetDatabase.SaveAssets();
             Debug.Log($"[Runeterra] Сцена гекс-карты создана: {ScenePath}, регионов: {map.regions.Count}");
+        }
+
+        private static int Rank(string[] order, string id)
+        {
+            int i = System.Array.IndexOf(order, id);
+            return i < 0 ? order.Length : i;
         }
 
         private static void BuildMenuScene()

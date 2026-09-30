@@ -38,14 +38,19 @@ namespace Runeterra.Units
         public static Parts Build(UnitData data, RegionData region, float s)
         {
             bool crusader = region.unitStyle == UnitStyle.Crusader;
-            var frame = Matrix4x4.Scale(Vector3.one * s);
-            var parts = new Parts { WeaponPivot = ShoulderPivot * s };
+            var baseFrame = Matrix4x4.Scale(Vector3.one * s);
+            // Всадник сидит на коне: фигурка приподнята, конь — часть тела.
+            var riderLift = data.mounted ? new Vector3(0f, 0.13f, 0f) : Vector3.zero;
+            var frame = baseFrame * Matrix4x4.Translate(riderLift);
+            var parts = new Parts { WeaponPivot = (ShoulderPivot + riderLift) * s };
 
-            var baseB = new MeshBuilder { Matrix = frame };
+            var baseB = new MeshBuilder { Matrix = baseFrame };
             baseB.Prism(Vector3.zero, 0.3f, 0.035f, 6, region.secondaryColor, region.primaryColor, Mathf.PI / 6f);
             parts.Base = baseB.ToMesh("UnitBase");
 
-            var b = new MeshBuilder { Matrix = frame };
+            var b = new MeshBuilder { Matrix = baseFrame };
+            if (data.mounted) Horse(b, region);
+            b.Matrix = frame;
             var w = new MeshBuilder { Matrix = frame };
 
             // Цвета одежды.
@@ -104,6 +109,25 @@ namespace Runeterra.Units
             parts.Body = b.ToMesh($"UnitBody_{data.id}");
             parts.Weapon = w.ToMesh($"UnitWeapon_{data.id}");
             return parts;
+        }
+
+        // ---------- Конь ----------
+
+        private static readonly Color HorseCoat = new Color(0.45f, 0.30f, 0.18f);
+
+        private static void Horse(MeshBuilder b, RegionData region)
+        {
+            var coat = HorseCoat;
+            foreach (float x in new[] { -0.045f, 0.045f })
+            foreach (float z in new[] { -0.11f, 0.11f })
+                b.Box(new Vector3(x, 0.035f, z), new Vector3(0.035f, 0.1f, 0.035f), 0f, Shade(coat, 0.7f), coat);
+            b.Box(new Vector3(0f, 0.12f, 0f), new Vector3(0.12f, 0.09f, 0.32f), 0f, Shade(coat, 0.85f), coat);
+            // Попона цвета страны.
+            b.Box(new Vector3(0f, 0.14f, -0.01f), new Vector3(0.13f, 0.075f, 0.14f), 0f, Shade(region.primaryColor, 0.8f), region.primaryColor);
+            b.Box(new Vector3(0f, 0.17f, 0.16f), new Vector3(0.06f, 0.12f, 0.06f), 0f, coat, coat);
+            b.Box(new Vector3(0f, 0.26f, 0.2f), new Vector3(0.05f, 0.05f, 0.11f), 0f, coat, Shade(coat, 1.1f));
+            b.Box(new Vector3(0f, 0.2f, 0.13f), new Vector3(0.02f, 0.1f, 0.03f), 0f, Dark, Dark);
+            b.Box(new Vector3(0f, 0.1f, -0.17f), new Vector3(0.02f, 0.08f, 0.03f), 0f, Dark, Dark);
         }
 
         // ---------- Тело ----------

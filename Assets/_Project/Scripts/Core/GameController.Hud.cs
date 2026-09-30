@@ -643,6 +643,10 @@ namespace Runeterra.Core
             if (tile.Feature != TileFeature.None) text += $", {FeatureName(tile.Feature)}";
             int cost = tile.MoveCost();
             text += cost == TerrainRules.Impassable ? " — непроходимо" : $" — стоимость хода {cost}";
+            var biome = map.Grid.BiomeOf(tile);
+            if (biome != Biome.Water) text += $"\nБиом: {TerrainRules.BiomeName(biome)}";
+            if (tile.Resource != null && goods.FirstOrDefault(g => g.id == tile.Resource) is GoodData deposit)
+                text += $"\n<color={CGold}>Месторождение: {deposit.displayName}</color>";
             var owner = State.OwnerOfTile(c);
             if (owner != null) text += $"\nТерритория: {Players[owner.Value].Region.displayName}";
             var city = State.CityAt(c);
@@ -938,6 +942,8 @@ namespace Runeterra.Core
             TerrainType.Grassland => "Луга",
             TerrainType.Desert => "Пустыня",
             TerrainType.Hills => "Холмы",
+            TerrainType.River => "Речная долина",
+            TerrainType.Marsh => "Болото",
             _ => "Горы",
         };
 

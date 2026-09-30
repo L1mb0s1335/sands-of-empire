@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ea91805a30b4df99efaaa464a9b73e2, type: 3}
+  m_Name: City_Beirut
+  m_EditorClassIdentifier: Assembly-CSharp::Runeterra.Cities.CityData
+  id: beirut
+  displayName: "\u0411\u0435\u0439\u0440\u0443\u0442"
+  altName: 
+  description: "\u041F\u043E\u0440\u0442 \u0443 \u043F\u043E\u0434\u043D\u043E\u0436\u0438\u044F
+    \u041B\u0438\u0432\u0430\u043D\u0430, \u0441\u043B\u0430\u0432\u0435\u043D \u043F\u0443\u0440\u043F\u0443\u0440\u043E\u043C
+    \u0438 \u0448\u0451\u043B\u043A\u043E\u043C."
+  isCapital: 0
+  startOffset:
+    q: 0
+    r: 0
+  startingPopulation: 1
+  lon: 35.5
+  lat: 33.89
+  food: 2
+  production: 1
+  gold: 1
+  science: 1
+  culture: 1
+  faith: 1

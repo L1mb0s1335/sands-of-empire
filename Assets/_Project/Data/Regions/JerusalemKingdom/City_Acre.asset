@@ -13,17 +13,21 @@ MonoBehaviour:
   m_Name: City_Acre
   m_EditorClassIdentifier: 
   id: acre
-  displayName: "Акра"
-  altName: "Акко"
-  description: "Портовая крепость на побережье, столица крестоносцев после 1191 года."
+  displayName: "\u0410\u043A\u0440\u0430"
+  altName: "\u0410\u043A\u043A\u043E"
+  description: "\u0421\u0442\u043E\u043B\u0438\u0446\u0430. \u041F\u043E\u0440\u0442\u043E\u0432\u0430\u044F
+    \u043A\u0440\u0435\u043F\u043E\u0441\u0442\u044C, \u0433\u043B\u0430\u0432\u043D\u044B\u0435
+    \u0432\u043E\u0440\u043E\u0442\u0430 \u043A\u0440\u0435\u0441\u0442\u043E\u043D\u043E\u0441\u0446\u0435\u0432."
   isCapital: 1
   startOffset:
     q: 0
     r: 0
   startingPopulation: 2
+  lon: 35.07
+  lat: 32.93
   food: 2
   production: 2
   gold: 2
   science: 1
   culture: 1
-  faith: 1
+  faith: 2

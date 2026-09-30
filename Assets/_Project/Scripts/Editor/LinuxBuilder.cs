@@ -9,6 +9,15 @@ namespace Runeterra.EditorTools
     {
         public const string OutputPath = "Builds/Linux/Runeterra4X.x86_64";
 
+        /// <summary>Контент → сцены → сборка (для пакетного режима: -executeMethod Runeterra.EditorTools.LinuxBuilder.BuildAll).</summary>
+        [MenuItem("Runeterra/Rebuild Content, Scenes and Linux")]
+        public static void BuildAll()
+        {
+            ContentBuilder.Build();
+            HexMapSceneBuilder.Build();
+            Build();
+        }
+
         [MenuItem("Runeterra/Build Linux")]
         public static void Build()
         {

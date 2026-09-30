@@ -75,6 +75,8 @@ namespace Runeterra.Map
         private static readonly Color StoneRoof = new Color(0.93f, 0.89f, 0.80f);
         private static readonly Color Gold = new Color(0.95f, 0.74f, 0.22f);
         private static readonly Color Turquoise = new Color(0.20f, 0.52f, 0.66f);
+        private static readonly Color RiverValley = new Color(0.30f, 0.58f, 0.30f);
+        private static readonly Color MarshGround = new Color(0.30f, 0.40f, 0.26f);
 
         private const float WaterLevel = -0.07f;
         private const float MapFloor = -0.35f;
@@ -407,6 +409,7 @@ namespace Runeterra.Map
         private void PlaceRegionTerritory()
         {
             HexCoord? firstCapital = null;
+            var capitals = new List<HexCoord>();
             for (int i = 0; i < regions.Count; i++)
             {
                 var region = regions[i];
@@ -420,13 +423,14 @@ namespace Runeterra.Map
                 foreach (var city in region.cities)
                 {
                     if (city == null) continue;
-                    var coord = start + city.startOffset;
+                    // Исторический город ставится по координатам (на ближайшую сушу), остальные — по смещению.
+                    var coord = city.HasGeo ? NearestLand(Grid.FromLonLat(city.lon, city.lat)) : start + city.startOffset;
                     if (!Grid.TryGetTile(coord, out var tile)) continue;
 
-                    // Город и его окрестности — всегда пригодная суша.
                     foreach (var t in TilesInRange(coord, cityTerritoryRadius))
                     {
-                        if (!t.Terrain.IsPassable())
+                        // Окрестности «придуманного» города — всегда пригодная суша; у исторических берег и горы как есть.
+                        if (!city.HasGeo && !t.Terrain.IsPassable())
                         {
                             t.Terrain = TerrainType.Grassland;
                             t.Feature = TileFeature.None;
@@ -437,14 +441,44 @@ namespace Runeterra.Map
                             _territoryCity[t.Coord] = coord;
                         }
                     }
-                    if (tile.Terrain == TerrainType.Hills || tile.Terrain == TerrainType.Desert) tile.Terrain = TerrainType.Plains;
+                    if (tile.Terrain == TerrainType.Hills || tile.Terrain == TerrainType.Desert ||
+                        tile.Terrain == TerrainType.Mountains || tile.Terrain == TerrainType.Marsh) tile.Terrain = TerrainType.Plains;
                     tile.Feature = TileFeature.None;
+                    tile.Resource = null;
                     tile.CityId = city.id;
                     _cities[city.id] = city;
                     _cityOwners[coord] = region;
                     _placedCities.Add((city, coord, region));
+                    if (city.isCapital) capitals.Add(coord);
+
+                    // Региональные ресурсы страны: у каждого города гарантированы месторождения.
+                    foreach (var good in region.specialties)
+                        if (good != null) Grid.EnsureResource(coord, good.id, city.isCapital ? 2 : 1);
                 }
             }
+            // Все столицы связаны по суше — войска и караваны могут дойти.
+            Grid.EnsureLandConnected(capitals);
+        }
+
+        // ---------- Месторождения ----------
+
+        private GameObject _depositsObject;
+
+        /// <summary>Значки месторождений региональных ресурсов: цветной самоцвет на клетке.</summary>
+        public void ShowDeposits(IEnumerable<Runeterra.Economy.GoodData> goods)
+        {
+            if (_depositsObject != null) SafeDestroy(_depositsObject);
+            var colors = goods.Where(g => g != null && g.fromDeposit).ToDictionary(g => g.id, g => g.depositColor);
+            var b = new MeshBuilder();
+            foreach (var tile in Grid.Tiles)
+            {
+                if (tile.Resource == null || tile.CityId != null || !colors.TryGetValue(tile.Resource, out var col)) continue;
+                var pos = LocalCenter(tile.Coord) + new Vector3(0.38f, 0f, -0.3f) * hexSize;
+                b.Prism(pos, 0.12f * hexSize, 0.03f * hexSize, 6, Shade(StoneWall, 0.7f), StoneWall);
+                b.Cone(pos + Vector3.up * 0.03f * hexSize, 0.08f * hexSize, 0.14f * hexSize, 4, Shade(col, 0.7f), col);
+            }
+            _depositsObject = CreateMeshObject("Deposits", b.ToMesh("Deposits"), MakeMaterial(Color.white));
+            _depositsObject.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
 
         private HexCoord NearestLand(HexCoord from)
@@ -475,7 +509,7 @@ namespace Runeterra.Map
             {
                 var c = queue.Dequeue();
                 int dist = c.DistanceTo(from);
-                if (dist > bestDist && c.DistanceTo(default) <= mapRadius - 2) { bestDist = dist; best = c; }
+                if (dist > bestDist && !Grid.IsEdge(c)) { bestDist = dist; best = c; }
                 foreach (var n in Grid.Neighbors(c))
                     if (n.Terrain.IsPassable() && seen.Add(n.Coord)) queue.Enqueue(n.Coord);
             }
@@ -515,6 +549,8 @@ namespace Runeterra.Map
                     TerrainType.Grassland => Grassland,
                     TerrainType.Desert => Desert,
                     TerrainType.Hills => Color.Lerp(HillsGround, Grassland, tile.Moisture * 0.6f),
+                    TerrainType.River => RiverValley,
+                    TerrainType.Marsh => MarshGround,
                     _ => MountainGround,
                 };
                 if (!tile.Terrain.IsWater())
@@ -921,6 +957,7 @@ namespace Runeterra.Map
             _cityLabels.Clear();
             _featuresObject = null;
             _roadsObject = null;
+            _depositsObject = null;
             _fogClouds = null;
             _fogDim = null;
             _cities.Clear();

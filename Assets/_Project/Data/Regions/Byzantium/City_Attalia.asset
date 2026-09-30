@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ea91805a30b4df99efaaa464a9b73e2, type: 3}
+  m_Name: City_Attalia
+  m_EditorClassIdentifier: Assembly-CSharp::Runeterra.Cities.CityData
+  id: attalia
+  displayName: "\u0410\u0442\u0442\u0430\u043B\u0438\u044F"
+  altName: "\u0410\u043D\u0442\u0430\u043B\u044C\u044F"
+  description: "\u0413\u0430\u0432\u0430\u043D\u044C \u041F\u0430\u043C\u0444\u0438\u043B\u0438\u0438,
+    \u043C\u043E\u0440\u0441\u043A\u0438\u0435 \u0432\u043E\u0440\u043E\u0442\u0430
+    \u0438\u043C\u043F\u0435\u0440\u0438\u0438."
+  isCapital: 0
+  startOffset:
+    q: 0
+    r: 0
+  startingPopulation: 1
+  lon: 30.71
+  lat: 36.89
+  food: 2
+  production: 1
+  gold: 1
+  science: 1
+  culture: 1
+  faith: 1

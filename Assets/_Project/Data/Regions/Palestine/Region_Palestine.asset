@@ -13,29 +13,38 @@ MonoBehaviour:
   m_Name: Region_Palestine
   m_EditorClassIdentifier: 
   id: palestine
-  displayName: "Палестина"
-  description: "Земля оливковых рощ и древних городов между Средиземным морем и рекой Иордан. Сильна верой и культурой."
+  displayName: "\u041F\u0430\u043B\u0435\u0441\u0442\u0438\u043D\u0430"
+  description: "\u0410\u0439\u044E\u0431\u0438\u0434\u044B \u0421\u0430\u043B\u0430\u0445
+    \u0430\u0434-\u0414\u0438\u043D\u0430: \u0418\u0435\u0440\u0443\u0441\u0430\u043B\u0438\u043C,
+    \u0414\u0430\u043C\u0430\u0441\u043A \u0438 \u0413\u0430\u0437\u0430. \u041E\u0430\u0437\u0438\u0441\u044B,
+    \u0444\u0438\u043D\u0438\u043A\u0438, \u0441\u0442\u0435\u043A\u043B\u043E \u0425\u0435\u0432\u0440\u043E\u043D\u0430
+    \u0438 \u0441\u043E\u043B\u044C \u041C\u0451\u0440\u0442\u0432\u043E\u0433\u043E
+    \u043C\u043E\u0440\u044F."
+  leaderName: "\u0421\u0430\u043B\u0430\u0445 \u0430\u0434-\u0414\u0438\u043D"
   leaderAbility: 1
-  leaderAbilityName: "Милосердие"
-  leaderAbilityText: "юниты лечатся на +10 за ход быстрее"
-  leaderName: "Салах ад-Дин"
-  primaryColor: {r: 0, g: 0.47843137, b: 0.23921569, a: 1}
-  secondaryColor: {r: 0.80784315, g: 0.06666667, b: 0.14901961, a: 1}
+  leaderAbilityName: "\u041C\u0438\u043B\u043E\u0441\u0435\u0440\u0434\u0438\u0435"
+  leaderAbilityText: "\u044E\u043D\u0438\u0442\u044B \u043B\u0435\u0447\u0430\u0442\u0441\u044F
+    \u043D\u0430 +10 \u0437\u0430 \u0445\u043E\u0434 \u0431\u044B\u0441\u0442\u0440\u0435\u0435"
+  primaryColor: {r: 0, g: 0.478, b: 0.239, a: 1}
+  secondaryColor: {r: 0.808, g: 0.067, b: 0.149, a: 1}
   unitStyle: 0
   cities:
   - {fileID: 11400000, guid: 3ca00a11be094f02bb0bb488670ea69c, type: 2}
-  - {fileID: 11400000, guid: 3146eb23ab89440d8d97799112b7253d, type: 2}
+  - {fileID: 11400000, guid: 3f62f50a3ccbd4a1ebe2713f6467495a, type: 2}
+  - {fileID: 11400000, guid: 7cc02514e47dc004d95d06952a512a40, type: 2}
   startingUnits:
   - {fileID: 11400000, guid: d7d5a712ca2f45759cea38179026afcb, type: 2}
   - {fileID: 11400000, guid: ae42579cab99490483d3d5f5ba11c74d, type: 2}
   - {fileID: 11400000, guid: 90cb78ada7d74ed9909e279650bc82fa, type: 2}
   startingGold: 20
   cityNames:
-  - "Газа"
-  - "Наблус"
-  - "Яффа"
-  - "Рамла"
-  - "Бейсан"
-  - "Тверия"
-  - "Иерихон"
-  - "Хайфа"
+  - "\u041D\u0430\u0431\u043B\u0443\u0441"
+  - "\u0420\u0430\u043C\u043B\u0430"
+  - "\u0411\u0435\u0439\u0441\u0430\u043D"
+  - "\u0422\u0432\u0435\u0440\u0438\u044F"
+  - "\u0418\u0435\u0440\u0438\u0445\u043E\u043D"
+  - "\u041A\u0435\u0440\u0430\u043A"
+  specialties:
+  - {fileID: 11400000, guid: f626dd0f1b521a017be40a2bbcbee99a, type: 2}
+  - {fileID: 11400000, guid: acdfa34f3c828bbafb7a32c42e6f7351, type: 2}
+  - {fileID: 11400000, guid: 78a282635bf583cf2be738240ad60bc2, type: 2}

@@ -13,28 +13,38 @@ MonoBehaviour:
   m_Name: Region_JerusalemKingdom
   m_EditorClassIdentifier: 
   id: jerusalem_kingdom
-  displayName: "Королевство крестоносцев"
-  description: "Иерусалимское королевство крестоносцев, главный противник Салах ад-Дина."
+  displayName: "\u041A\u0440\u0435\u0441\u0442\u043E\u043D\u043E\u0441\u0446\u044B"
+  description: "\u041B\u0430\u0442\u0438\u043D\u0441\u043A\u0438\u0435 \u0433\u043E\u0441\u0443\u0434\u0430\u0440\u0441\u0442\u0432\u0430
+    \u0412\u043E\u0441\u0442\u043E\u043A\u0430: \u0410\u043A\u0440\u0430, \u0411\u0435\u0439\u0440\u0443\u0442
+    \u0438 \u0422\u043E\u0440\u0442\u043E\u0441\u0430. \u0421\u0438\u043B\u044C\u043D\u044B
+    \u0432 \u0430\u0442\u0430\u043A\u0435, \u0442\u043E\u0440\u0433\u0443\u044E\u0442
+    \u0448\u0451\u043B\u043A\u043E\u043C, \u043F\u0443\u0440\u043F\u0443\u0440\u043E\u043C
+    \u0438 \u0441\u0442\u0435\u043A\u043B\u043E\u043C."
+  leaderName: "\u0420\u0438\u0447\u0430\u0440\u0434 \u041B\u044C\u0432\u0438\u043D\u043E\u0435
+    \u0421\u0435\u0440\u0434\u0446\u0435"
   leaderAbility: 2
-  leaderAbilityName: "Львиное сердце"
-  leaderAbilityText: "юниты +3 к силе при атаке"
-  leaderName: "Ричард Львиное Сердце"
+  leaderAbilityName: "\u041B\u044C\u0432\u0438\u043D\u043E\u0435 \u0441\u0435\u0440\u0434\u0446\u0435"
+  leaderAbilityText: "\u044E\u043D\u0438\u0442\u044B +3 \u043A \u0441\u0438\u043B\u0435
+    \u043F\u0440\u0438 \u0430\u0442\u0430\u043A\u0435"
   primaryColor: {r: 0.93, g: 0.91, b: 0.86, a: 1}
   secondaryColor: {r: 0.85, g: 0.66, b: 0.18, a: 1}
   unitStyle: 1
   cities:
   - {fileID: 11400000, guid: 07f470ffdb1645318c4864aa9e51f0e8, type: 2}
+  - {fileID: 11400000, guid: bee67356fb1c67a019c4456c7dc75b0b, type: 2}
+  - {fileID: 11400000, guid: 8be7bad45f1d235a08eaaee02ee30309, type: 2}
   startingUnits:
   - {fileID: 11400000, guid: d7d5a712ca2f45759cea38179026afcb, type: 2}
   - {fileID: 11400000, guid: ae42579cab99490483d3d5f5ba11c74d, type: 2}
   - {fileID: 11400000, guid: 90cb78ada7d74ed9909e279650bc82fa, type: 2}
   startingGold: 20
   cityNames:
-  - "Тир"
-  - "Сидон"
-  - "Кесария"
-  - "Бейрут"
-  - "Аскалон"
-  - "Керак"
-  - "Триполи"
-  - "Антиохия"
+  - "\u0422\u0438\u0440"
+  - "\u0421\u0438\u0434\u043E\u043D"
+  - "\u041A\u0435\u0441\u0430\u0440\u0438\u044F"
+  - "\u042F\u0444\u0444\u0430"
+  - "\u0410\u0441\u043A\u0430\u043B\u043E\u043D"
+  - "\u041C\u0430\u0440\u043A\u0430\u0431"
+  specialties:
+  - {fileID: 11400000, guid: 0ba438fb1577cd0d29b919cf9658b68d, type: 2}
+  - {fileID: 11400000, guid: acdfa34f3c828bbafb7a32c42e6f7351, type: 2}

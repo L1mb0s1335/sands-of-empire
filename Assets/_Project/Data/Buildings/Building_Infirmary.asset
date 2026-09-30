@@ -13,24 +13,30 @@ MonoBehaviour:
   m_Name: Building_Infirmary
   m_EditorClassIdentifier: 
   id: infirmary
-  displayName: "Лечебница"
-  description: "Эпидемии реже на 2%."
+  displayName: "\u041B\u0435\u0447\u0435\u0431\u043D\u0438\u0446\u0430"
+  description: "\u042D\u043F\u0438\u0434\u0435\u043C\u0438\u0438 \u0440\u0435\u0436\u0435
+    \u043D\u0430 2%. \u041D\u0443\u0436\u043D\u044B \u0441\u043E\u043B\u044C \u0438
+    \u0441\u0442\u0435\u043A\u043B\u043E."
   productionCost: 40
   goodsCost:
   - good: {fileID: 11400000, guid: 2745f0c1a01343358db0930e74f11dc9, type: 2}
     amount: 4
   - good: {fileID: 11400000, guid: 174c30a55cf940928b47e5071c17c715, type: 2}
     amount: 4
+  - good: {fileID: 11400000, guid: 78a282635bf583cf2be738240ad60bc2, type: 2}
+    amount: 2
+  - good: {fileID: 11400000, guid: acdfa34f3c828bbafb7a32c42e6f7351, type: 2}
+    amount: 1
   storageBonus: 0
   spoilageMultiplier: 1
+  requiredTier: 3
+  waterBonus: 0
+  fireReduction: 0
+  crimeReduction: 0
+  epidemicReduction: 0.02
   maxPerCity: 1
   inputs: []
   output:
     good: {fileID: 0}
     amount: 0
   batchesPerTurn: 0
-  requiredTier: 3
-  waterBonus: 0
-  fireReduction: 0
-  crimeReduction: 0
-  epidemicReduction: 0.02

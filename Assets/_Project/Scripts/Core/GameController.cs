@@ -134,6 +134,7 @@ namespace Runeterra.Core
             foreach (var p in players) SpawnStartingUnits(p);
             Turns.PlayerTurnStarted += p => { if (p.IsHuman && Winner == null) SelectNextUnit(); };
 
+            map.ShowDeposits(goods);
             _minimap = new Minimap(State, map, _human);
             FocusCamera();
             Turns.Start();
@@ -165,6 +166,7 @@ namespace Runeterra.Core
             }
             map.RebuildFeatures();
             map.RebuildRoads();
+            map.ShowDeposits(goods);
             Turns.PlayerTurnStarted += p => { if (p.IsHuman && Winner == null) SelectNextUnit(); };
 
             _minimap = new Minimap(State, map, _human);

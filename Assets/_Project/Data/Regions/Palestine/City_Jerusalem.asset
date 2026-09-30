@@ -13,17 +13,21 @@ MonoBehaviour:
   m_Name: City_Jerusalem
   m_EditorClassIdentifier: 
   id: jerusalem
-  displayName: "Иерусалим"
-  altName: "Аль-Кудс"
-  description: "Столица Палестины. Древний город на холмах, святыня трёх религий и центр паломничества."
+  displayName: "\u0418\u0435\u0440\u0443\u0441\u0430\u043B\u0438\u043C"
+  altName: "\u0410\u043B\u044C-\u041A\u0443\u0434\u0441"
+  description: "\u0421\u0442\u043E\u043B\u0438\u0446\u0430. \u0421\u0432\u044F\u0442\u043E\u0439
+    \u0433\u043E\u0440\u043E\u0434 \u0442\u0440\u0451\u0445 \u0440\u0435\u043B\u0438\u0433\u0438\u0439
+    \u0438 \u0446\u0435\u043D\u0442\u0440 \u043F\u0430\u043B\u043E\u043C\u043D\u0438\u0447\u0435\u0441\u0442\u0432\u0430."
   isCapital: 1
   startOffset:
     q: 0
     r: 0
   startingPopulation: 2
+  lon: 35.23
+  lat: 31.78
   food: 2
-  production: 1
+  production: 2
   gold: 2
   science: 1
-  culture: 2
-  faith: 3
+  culture: 1
+  faith: 2
