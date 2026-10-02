@@ -16,6 +16,8 @@ namespace Runeterra.Core
         public string HumanRegion;
         /// <summary>После этого хода партия заканчивается подсчётом очков.</summary>
         public int TurnLimit = 200;
+        /// <summary>Сид партии (null — новый случайный при старте).</summary>
+        public int? Seed;
 
         public static readonly int[] Lengths = { 100, 200, 300 };
 

@@ -26,8 +26,7 @@ namespace Runeterra.Core
         public const float SeaRiskPerTurn = 0.02f;
 
         private readonly GameState _game;
-        private Random _random;
-        private readonly Dictionary<GoodData, float> _exportPressure = new Dictionary<GoodData, float>();
+        private readonly SortedDictionary<GoodData, float> _exportPressure = new SortedDictionary<GoodData, float>(ContentOrder.Goods);
 
         public List<Caravan> Caravans { get; } = new List<Caravan>();
 
@@ -35,15 +34,15 @@ namespace Runeterra.Core
         public event Action<Caravan> Moved;
         public event Action<Caravan, bool> Finished; // true — доставлен, false — пропал
 
-        public TradeSystem(GameState game, int seed)
+        public TradeSystem(GameState game)
         {
             _game = game;
-            _random = new Random(seed);
         }
 
-        internal void Reseed(int seed) => _random = new Random(seed);
-        internal Dictionary<GoodData, float> ExportPressure => _exportPressure;
-        internal Dictionary<(int, GoodData), float> YearExport => _yearExport;
+        /// <summary>id следующего каравана (сохраняется: это ключ бросков риска в пути).</summary>
+        public int NextCaravanId { get; internal set; } = 1;
+        internal SortedDictionary<GoodData, float> ExportPressure => _exportPressure;
+        internal SortedDictionary<(int, GoodData), float> YearExport => _yearExport;
 
         // ---------- Цены ----------
 
@@ -54,7 +53,7 @@ namespace Runeterra.Core
         public float Price(City city, GoodData good)
         {
             float ratio = TargetStock(city) / (city.Warehouse.Get(good) + 2f);
-            float k = (float)Math.Pow(ratio, 0.6);
+            float k = (float)DetMath.Pow(ratio, 0.6);
             return good.basePrice * Math.Max(0.35f, Math.Min(3f, k));
         }
 
@@ -147,7 +146,7 @@ namespace Runeterra.Core
             foreach (var city in _game.Cities.Where(c => c.OwnerIndex == player.Index && c.HasMarket).ToList())
                 for (int i = 0; i < perCity; i++)
                 {
-                    if (_random.NextDouble() < player.Debasement) continue;
+                    if (_game.Roll(DetRandom.Kind.MerchantStays, GameState.CityKey(city), player.Index, i) < player.Debasement) continue;
                     if (!DispatchBest(player, city)) break;
                 }
         }
@@ -215,7 +214,7 @@ namespace Runeterra.Core
             if (best.Good == null) return false;
 
             from.Warehouse.Take(best.Good, best.Amount);
-            var caravan = new Caravan(player.Index, best.Good, best.Amount, from, best.To, best.Sea, best.Path, Price(from, best.Good));
+            var caravan = new Caravan(NextCaravanId++, player.Index, best.Good, best.Amount, from, best.To, best.Sea, best.Path, Price(from, best.Good));
             Caravans.Add(caravan);
             Dispatched?.Invoke(caravan);
             return true;
@@ -232,7 +231,7 @@ namespace Runeterra.Core
             var here = _game.Grid.GetTile(c.Coord);
             bool exposed = c.BySea || (!here.HasRoad && _game.OwnerOfTile(c.Coord) != c.OwnerIndex);
             float risk = (c.BySea ? (player.Has("maritime") ? 0f : SeaRiskPerTurn) : BanditRiskPerTurn) * (player.Has("bills") ? 0.5f : 1f);
-            if (exposed && _random.NextDouble() < risk)
+            if (exposed && _game.Roll(DetRandom.Kind.CaravanLost, c.Id, player.Index) < risk)
             {
                 Finish(c, false, c.BySea ? "потерян в шторм" : "разграблен разбойниками");
                 return;
@@ -310,7 +309,7 @@ namespace Runeterra.Core
                             (smuggled >= 0.5f ? $" (контрабанда −{smuggled:0})" : ""));
         }
 
-        private readonly Dictionary<(int, GoodData), float> _yearExport = new Dictionary<(int, GoodData), float>();
+        private readonly SortedDictionary<(int, GoodData), float> _yearExport = new SortedDictionary<(int, GoodData), float>(ContentOrder.OwnerGood);
 
         /// <summary>
         /// Раз в год: если больше 60% заморского вывоза игрока — один товар (и его много),

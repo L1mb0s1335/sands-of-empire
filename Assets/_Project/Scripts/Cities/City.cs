@@ -14,8 +14,8 @@ namespace Runeterra.Cities
         public int FounderIndex { get; internal set; }
         public bool IsCapital => Data.isCapital;
 
-        /// <summary>Клетки территории города.</summary>
-        public HashSet<HexCoord> Territory { get; } = new HashSet<HexCoord>();
+        /// <summary>Клетки территории города (по координатам: порядок обхода не зависит от истории изменений).</summary>
+        public SortedSet<HexCoord> Territory { get; } = new SortedSet<HexCoord>(ContentOrder.Coords);
 
         /// <summary>Клетка рынка или null.</summary>
         public HexCoord? MarketCoord { get; set; }
@@ -73,7 +73,7 @@ namespace Runeterra.Cities
 
         public Warehouse Warehouse { get; } = new Warehouse();
         /// <summary>Постройки и их количество (мастерских одного типа может быть несколько).</summary>
-        public Dictionary<BuildingData, int> Buildings { get; } = new Dictionary<BuildingData, int>();
+        public SortedDictionary<BuildingData, int> Buildings { get; } = new SortedDictionary<BuildingData, int>(ContentOrder.Buildings);
 
         public int Count(BuildingData building) => building != null && Buildings.TryGetValue(building, out var n) ? n : 0;
         public bool Has(BuildingData building) => Count(building) > 0;
@@ -90,7 +90,7 @@ namespace Runeterra.Cities
         // ---------- Работники ----------
 
         /// <summary>Мастера мастерских: тип мастерской → стаж каждого мастера в ходах.</summary>
-        public Dictionary<BuildingData, List<int>> Masters { get; } = new Dictionary<BuildingData, List<int>>();
+        public SortedDictionary<BuildingData, List<int>> Masters { get; } = new SortedDictionary<BuildingData, List<int>>(ContentOrder.Buildings);
 
         public int Employed
         {
@@ -121,7 +121,7 @@ namespace Runeterra.Cities
         public int DraftCooldownUntil { get; set; }
 
         /// <summary>Болезнь урожая: товар → сколько ходов ещё вдвое меньше добыча.</summary>
-        public Dictionary<GoodData, int> Blights { get; } = new Dictionary<GoodData, int>();
+        public SortedDictionary<GoodData, int> Blights { get; } = new SortedDictionary<GoodData, int>(ContentOrder.Goods);
 
         /// <summary>Радиус границ: 1, при населении 3 — 2, при 6 — 3.</summary>
         public int BorderRadius => Population >= 6 ? 3 : Population >= 3 ? 2 : 1;

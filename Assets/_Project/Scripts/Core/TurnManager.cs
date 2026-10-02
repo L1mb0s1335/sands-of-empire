@@ -55,11 +55,11 @@ namespace Runeterra.Core
         // ---------- Развитие ----------
 
         /// <summary>Изученные узлы (по id).</summary>
-        public HashSet<string> Techs { get; } = new HashSet<string>();
+        public SortedSet<string> Techs { get; } = new SortedSet<string>(StringComparer.Ordinal);
         public Runeterra.Tech.TechData Researching { get; set; }
 
         /// <summary>Накопленный прогресс по каждому узлу (сохраняется при смене темы, растёт и от практики).</summary>
-        public Dictionary<string, float> TechProgress { get; } = new Dictionary<string, float>();
+        public SortedDictionary<string, float> TechProgress { get; } = new SortedDictionary<string, float>(StringComparer.Ordinal);
 
         public float ResearchProgress
         {
@@ -68,15 +68,15 @@ namespace Runeterra.Core
         }
 
         /// <summary>Открытые скрытые узлы и наступившие эпохи.</summary>
-        public HashSet<string> RevealedTechs { get; } = new HashSet<string>();
-        public HashSet<string> Epochs { get; } = new HashSet<string>();
+        public SortedSet<string> RevealedTechs { get; } = new SortedSet<string>(StringComparer.Ordinal);
+        public SortedSet<string> Epochs { get; } = new SortedSet<string>(StringComparer.Ordinal);
 
         /// <summary>Практика за последний ход: караваны доставлены, боёв проведено.</summary>
         public int CaravansDeliveredLastTurn { get; set; }
         public int BattlesThisTurn { get; set; }
         public int BattlesLastTurn { get; set; }
         /// <summary>Ветки без носителей знаний: сколько ходов подряд.</summary>
-        public Dictionary<Runeterra.Tech.TechBranch, int> BranchWithoutCarrier { get; } = new Dictionary<Runeterra.Tech.TechBranch, int>();
+        public SortedDictionary<Runeterra.Tech.TechBranch, int> BranchWithoutCarrier { get; } = new SortedDictionary<Runeterra.Tech.TechBranch, int>();
         public int ScienceLastTurn { get; set; }
         public int ArmyUpkeepLastTurn { get; set; }
         /// <summary>Лет интенсивного земледелия (истощение почвы).</summary>

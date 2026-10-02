@@ -14,6 +14,8 @@ namespace Runeterra.Core
     {
         private string _outDir;
         private GameSetup _setup;
+        /// <summary>Режим проверки детерминированности (-detcheck): партии без сцены и цепочки хешей.</summary>
+        private DeterminismCheck.Options _detCheck;
 
         /// <summary>Идёт автопроверка (журнал дипломатии пишется в лог).</summary>
         public static bool Active { get; private set; }
@@ -35,7 +37,9 @@ namespace Runeterra.Core
                 Scenario = Arg("-scenario") == "peace" ? Scenario.PeacefulDevelopment : Scenario.Historical1187,
                 HumanRegion = Arg("-side") ?? "palestine",
                 TurnLimit = int.TryParse(Arg("-turns"), out var t) ? t : 200,
+                Seed = int.TryParse(Arg("-seed"), out var seed) ? seed : 1,
             };
+            if (System.Array.IndexOf(args, "-detcheck") >= 0) check._detCheck = DeterminismCheck.Options.Parse(args);
             Directory.CreateDirectory(check._outDir);
         }
 
@@ -94,6 +98,15 @@ namespace Runeterra.Core
             yield return new WaitForSeconds(1.5f);
             var menu = FindFirstObjectByType<MainMenu>();
             Debug.Log($"[AUTOPLAY] menu found: {menu != null}");
+            if (_detCheck != null)
+            {
+                menu.StartGame(_setup);
+                GameController host = null;
+                while (host == null || host.Turns == null) { yield return null; host = FindFirstObjectByType<GameController>(); }
+                yield return DeterminismCheck.Run(host, _detCheck);
+                Application.Quit();
+                yield break;
+            }
             yield return Shot("01_menu.png");
             menu.ShowSetup(true);
             yield return new WaitForSeconds(0.3f);
@@ -186,7 +199,7 @@ namespace Runeterra.Core
                           string.Join(" / ", System.Linq.Enumerable.Select(game.Turns.Players, p => $"{p.Region.displayName}={p.Units.Count}")) +
                           $" | cities {string.Join("/", System.Linq.Enumerable.Select(game.Turns.Players, p => System.Linq.Enumerable.Count(game.Cities, c => c.OwnerIndex == p.Index)))}" +
                           $" | gold {string.Join("/", System.Linq.Enumerable.Select(game.Turns.Players, p => p.Gold))}" +
-                          $" | wars {game.State.WarSummary()} | ai {game.LastAiRoundMs} ms");
+                          $" | wars {game.State.WarSummary()} | ai {game.LastAiRoundMs} ms | hash {game.Hash()}");
             }
             Time.timeScale = 1f;
             while (game.Busy) yield return null;

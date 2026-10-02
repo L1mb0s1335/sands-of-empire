@@ -21,8 +21,14 @@ namespace Runeterra.Core
         public static string SavePath => Path.Combine(Application.persistentDataPath, "save.json");
         public static bool HasSave => File.Exists(SavePath);
 
-        /// <summary>Версия формата: 3 — шесть сторон, дипломатия, торговля между странами, сценарии.</summary>
-        public const int CurrentVersion = 3;
+        /// <summary>
+        /// Версия формата: 3 — шесть сторон, дипломатия, торговля между странами, сценарии;
+        /// 4 — сид партии, счётчики id юнитов и караванов, точные остатки складов (детерминированность).
+        /// </summary>
+        public const int CurrentVersion = 4;
+
+        /// <summary>Самая старая версия, которую ещё можно загрузить.</summary>
+        public const int MinVersion = 3;
 
         /// <summary>Сохранение, которое нужно загрузить при старте сцены партии (null — новая игра).</summary>
         public static SaveData PendingLoad { get; set; }
@@ -35,6 +41,9 @@ namespace Runeterra.Core
             public int scenario, turnLimit = 200;
             public string humanRegion;
             public int mapRadius, seed;
+            /// <summary>Сид партии (v4). В v3 его нет — вычисляется при загрузке.</summary>
+            public int gameSeed;
+            public int nextUnitId, nextCaravanId;
             public int turn, currentIndex;
             public int winner = -1;
             public string gameOverText;
@@ -162,6 +171,7 @@ namespace Runeterra.Core
 
         [Serializable] public class CaravanSave
         {
+            public int id;
             public int owner, from, to; // индексы городов; to = -1 — заморский рынок
             public string good;
             public float amount, buyPrice;
@@ -191,6 +201,9 @@ namespace Runeterra.Core
             {
                 mapRadius = s.Grid.Radius,
                 seed = s.Grid.Seed,
+                gameSeed = s.GameSeed,
+                nextUnitId = s.NextUnitId,
+                nextCaravanId = s.Trade.NextCaravanId,
                 turn = s.Turns.Turn,
                 currentIndex = s.Turns.CurrentIndex,
                 winner = s.Winner ?? -1,
@@ -246,7 +259,7 @@ namespace Runeterra.Core
                     buildKind = b == null ? 0 : b.Unit != null ? 1 : b.District != null ? 2 : 3,
                     buildId = b == null ? null : b.Unit != null ? b.Unit.id : b.District != null ? b.District.id : b.Building.id,
                     capacity = c.Warehouse.Capacity, spoilage = c.Warehouse.SpoilageMultiplier,
-                    stock = c.Warehouse.Items.OrderBy(kv => kv.Key.id).Select(kv => new GoodAmount { id = kv.Key.id, amount = kv.Value }).ToList(),
+                    stock = c.Warehouse.Exact.Select(kv => new GoodAmount { id = kv.Key.id, amount = kv.Value }).ToList(),
                     buildings = c.Buildings.OrderBy(kv => kv.Key.id).Select(kv => new IntEntry { id = kv.Key.id, value = kv.Value }).ToList(),
                     masters = c.Masters.Where(kv => kv.Value.Count > 0).OrderBy(kv => kv.Key.id)
                         .Select(kv => new MastersSave { building = kv.Key.id, experience = kv.Value.ToList() }).ToList(),
@@ -259,7 +272,7 @@ namespace Runeterra.Core
             foreach (var cv in s.Trade.Caravans)
                 d.caravans.Add(new CaravanSave
                 {
-                    owner = cv.OwnerIndex, from = s.Cities.IndexOf(cv.From), to = cv.To != null ? s.Cities.IndexOf(cv.To) : -1,
+                    id = cv.Id, owner = cv.OwnerIndex, from = s.Cities.IndexOf(cv.From), to = cv.To != null ? s.Cities.IndexOf(cv.To) : -1,
                     good = cv.Good.id, amount = cv.Amount, buyPrice = cv.BuyPrice, bySea = cv.BySea,
                     path = cv.Path.ToList(), position = cv.Position, stalled = cv.StalledTurns,
                 });
@@ -301,9 +314,9 @@ namespace Runeterra.Core
             {
                 var d = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
                 // Сохранения до шести сторон и сценариев несовместимы с новой картой.
-                if (d.version < CurrentVersion)
+                if (d.version < MinVersion)
                 {
-                    Debug.LogWarning($"Сохранение версии {d.version} устарело (нужна {CurrentVersion})");
+                    Debug.LogWarning($"Сохранение версии {d.version} устарело (нужна не ниже {MinVersion})");
                     return null;
                 }
                 return d;
@@ -413,18 +426,22 @@ namespace Runeterra.Core
                 {
                     var data = Find(content.Units, us.data, u => u.id);
                     if (data == null) throw new InvalidDataException($"юнит {us.data} не найден");
-                    var unit = new Unit(data, p.Index, us.coord) { BonusStrength = us.bonusStrength, AttackBonus = us.attackBonus };
+                    var unit = new Unit(data, p.Index, us.coord, us.id) { BonusStrength = us.bonusStrength, AttackBonus = us.attackBonus };
                     unit.Restore(us.id, us.coord, us.moves, us.health, us.charges, us.experience, us.acted);
                     s.AttachUnit(p, unit);
                 }
             }
 
+            // v3: id караванов не сохранялись — нумеруем по порядку.
+            bool legacy = d.version < 4;
+            int caravanId = 1;
             foreach (var cv in d.caravans)
             {
                 var good = Good(cv.good);
                 if (good == null || cv.from < 0 || cv.from >= s.Cities.Count) continue;
                 var to = cv.to >= 0 && cv.to < s.Cities.Count ? s.Cities[cv.to] : null;
-                s.Trade.Caravans.Add(new Caravan(cv.owner, good, cv.amount, s.Cities[cv.from], to, cv.bySea, cv.path, cv.buyPrice)
+                int id = legacy ? caravanId++ : cv.id;
+                s.Trade.Caravans.Add(new Caravan(id, cv.owner, good, cv.amount, s.Cities[cv.from], to, cv.bySea, cv.path, cv.buyPrice)
                     { Position = cv.position, StalledTurns = cv.stalled });
             }
             foreach (var e in d.exportPressure)
@@ -445,8 +462,21 @@ namespace Runeterra.Core
             foreach (var p in d.proposals)
                 s.Diplomacy.Proposals.Add(new Proposal { From = p.from, Kind = (ProposalKind)p.kind, Turn = p.turn });
 
+            if (legacy)
+            {
+                // Сид партии вычисляется из сида карты и хода: повторная загрузка того же файла продолжает партию одинаково.
+                s.SetGameSeed((int)DetRandom.Hash(d.seed, d.turn, 0, d.currentIndex));
+                s.NextUnitId = s.Players.SelectMany(p => p.Units).Select(u => u.Id).DefaultIfEmpty(0).Max() + 1;
+                s.Trade.NextCaravanId = caravanId;
+            }
+            else
+            {
+                s.SetGameSeed(d.gameSeed);
+                s.NextUnitId = d.nextUnitId;
+                s.Trade.NextCaravanId = d.nextCaravanId;
+            }
             s.Turns.Restore(d.turn, d.currentIndex);
-            s.Restore(d.winner >= 0 ? d.winner : (int?)null, d.gameOverText, d.turn);
+            s.Restore(d.winner >= 0 ? d.winner : (int?)null, d.gameOverText);
             s.Vision.RefreshAll();
         }
     }

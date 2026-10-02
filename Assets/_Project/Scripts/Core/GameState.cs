@@ -91,7 +91,25 @@ namespace Runeterra.Core
         internal int TradeOpinion(int a, int b) => Trade.OpinionBonus(a, b);
 
         private PlayerState OwnerOf(City city) => Players[city.OwnerIndex];
-        private Random _random;
+
+        /// <summary>Сид партии: из него и ключей события вычисляются все броски (см. <see cref="DetRandom"/>).</summary>
+        public int GameSeed { get; private set; }
+
+        /// <summary>id следующего юнита (часть состояния партии: сохраняется и входит в хеш).</summary>
+        public int NextUnitId { get; internal set; } = 1;
+
+        internal void SetGameSeed(int seed) => GameSeed = seed;
+
+        /// <summary>Бросок в [0, 1) по ключам: сид партии, текущий ход, вид события и до трёх ключей.</summary>
+        public double Roll(DetRandom.Kind kind, long a = 0, long b = 0, long c = 0) =>
+            DetRandom.Unit(DetRandom.Hash(GameSeed, Turns.Turn, kind, a, b, c));
+
+        /// <summary>Целое в [0, n) по ключам.</summary>
+        public int RollIndex(int n, DetRandom.Kind kind, long a = 0, long b = 0, long c = 0) =>
+            DetRandom.Range(DetRandom.Hash(GameSeed, Turns.Turn, kind, a, b, c), n);
+
+        /// <summary>Ключ города для бросков (по id, не зависит от порядка в списке).</summary>
+        public static long CityKey(City city) => DetRandom.StringKey(city.Data.id);
 
         public Season Season => Seasons.Of(Turns.Turn);
         public int Year => Seasons.Year(Turns.Turn);
@@ -116,13 +134,11 @@ namespace Runeterra.Core
 
         public void SetPort(DistrictData port) => Port = port;
 
-        /// <summary>Восстановление из сохранения: итог партии и новое зерно случайностей.</summary>
-        internal void Restore(int? winner, string gameOverText, int turn)
+        /// <summary>Восстановление из сохранения: итог партии.</summary>
+        internal void Restore(int? winner, string gameOverText)
         {
             Winner = winner;
             GameOverText = gameOverText;
-            _random = new Random(Grid.Seed * 31 + 7 + turn * 7919);
-            Trade.Reseed(Grid.Seed + turn * 7919);
         }
 
         /// <summary>Юнит из сохранения: в список игрока и на карту.</summary>
@@ -143,11 +159,11 @@ namespace Runeterra.Core
             Goods = goods ?? new List<GoodData>();
             BuildingTypes = buildings ?? new List<BuildingData>();
             Grain = Goods.FirstOrDefault(g => g.id == "grain");
-            Trade = new TradeSystem(this, grid.Seed);
+            Trade = new TradeSystem(this);
             Tech = new TechSystem(this, techs);
             Vision = new Visibility(this);
             Diplomacy = new Diplomacy(this);
-            _random = new Random(grid.Seed * 31 + 7);
+            GameSeed = grid.Seed;
             Turns = new TurnManager(players, aiTurn);
             Turns.PlayerTurnStarted += BeginPlayerTurn;
             RoadsChanged += Trade.ClearRouteCache;
@@ -479,7 +495,8 @@ namespace Runeterra.Core
                 CityChanged?.Invoke(city);
             }
 
-            if (_random.NextDouble() < FireChance(city))
+            long key = CityKey(city);
+            if (Roll(DetRandom.Kind.Fire, key, city.OwnerIndex) < FireChance(city))
             {
                 var owner = Players[city.OwnerIndex];
                 if (owner.Reserve >= ReserveFireCost)
@@ -493,9 +510,9 @@ namespace Runeterra.Core
                 city.ProductionStock /= 2;
                 var msg = $"{city.Data.displayName}: пожар! Сгорела половина дерева и производства";
                 var burnable = city.Buildings.Keys.Where(b => b.IsWorkshop).ToList();
-                if (burnable.Count > 0 && _random.NextDouble() < 0.3)
+                if (burnable.Count > 0 && Roll(DetRandom.Kind.FireBurnsWorkshop, key, city.OwnerIndex) < 0.3)
                 {
-                    var b = burnable[_random.Next(burnable.Count)];
+                    var b = burnable[RollIndex(burnable.Count, DetRandom.Kind.FireWorkshopPick, key, city.OwnerIndex)];
                     if (--city.Buildings[b] <= 0) city.Buildings.Remove(b);
                     var masters = city.MastersOf(b);
                     if (masters.Count > city.Count(b)) masters.RemoveAt(masters.Count - 1);
@@ -505,7 +522,7 @@ namespace Runeterra.Core
             }
             fireDone:
 
-            if (_random.NextDouble() < EpidemicChance(city))
+            if (Roll(DetRandom.Kind.Epidemic, key, city.OwnerIndex) < EpidemicChance(city))
             {
                 LosePopulation(city, "эпидемия");
                 if (city.Population >= 8) LosePopulation(city, "эпидемия");
@@ -554,7 +571,7 @@ namespace Runeterra.Core
 
             if (p.LandTax < HeavyTax) return;
             foreach (var city in Cities.Where(c => c.OwnerIndex == p.Index && c.BadHarvest && c.Population > 1).ToList())
-                if (_random.NextDouble() < FleeChance) LosePopulation(city, "неурожай и земельный налог — крестьяне бегут");
+                if (Roll(DetRandom.Kind.PeasantsFlee, CityKey(city), p.Index) < FleeChance) LosePopulation(city, "неурожай и земельный налог — крестьяне бегут");
         }
 
         // ---------- Монета и займы ----------
@@ -811,7 +828,7 @@ namespace Runeterra.Core
             if (Season != Season.Harvest) return;
             var (good, share) = Monoculture(city);
             if (good == null || share < MonocultureShare || city.Blights.ContainsKey(good)) return;
-            if (_random.NextDouble() >= BlightChance * (OwnerOf(city).Has("rotation") ? 0.5f : 1f)) return;
+            if (Roll(DetRandom.Kind.Blight, CityKey(city), city.OwnerIndex) >= BlightChance * (OwnerOf(city).Has("rotation") ? 0.5f : 1f)) return;
             city.Blights[good] = Seasons.TurnsPerYear;
             Message?.Invoke($"{city.Data.displayName}: болезнь урожая — {good.displayName} весь год вдвое меньше (монокультура {share:0%})");
         }
@@ -1379,7 +1396,7 @@ namespace Runeterra.Core
 
         public Unit Spawn(UnitData data, PlayerState player, HexCoord coord)
         {
-            var unit = new Unit(data, player.Index, coord);
+            var unit = new Unit(data, player.Index, coord, NextUnitId++);
             unit.BonusStrength += Tech.NewUnitBonus(player, unit);
             if (player.Region.leaderAbility == LeaderAbility.Lionheart && CanFight(unit)) unit.AttackBonus = LionheartAttack;
             ApplyLeaderMovement(unit);
@@ -1400,6 +1417,8 @@ namespace Runeterra.Core
             if (d == Market) city.MarketCoord = at;
             else if (d == Port) city.PortCoord = at;
             Grid.GetTile(at).Feature = TileFeature.None;
+            // Вырубленный лес меняет стоимость пути караванов: кэш маршрутов должен это увидеть.
+            Trade.ClearRouteCache();
         }
 
         public bool IsDistrictTile(HexCoord c) => Cities.Any(ci => ci.MarketCoord == c || ci.PortCoord == c);

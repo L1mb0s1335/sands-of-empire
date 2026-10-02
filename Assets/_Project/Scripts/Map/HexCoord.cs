@@ -38,7 +38,8 @@ namespace Runeterra.Map
 
         public bool Equals(HexCoord other) => q == other.q && r == other.r;
         public override bool Equals(object obj) => obj is HexCoord other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(q, r);
+        // Без HashCode.Combine: его зерно случайно в каждом запуске, а порядок обхода хеш-множеств не должен зависеть от запуска.
+        public override int GetHashCode() => unchecked(q * 486187739 + r);
         public override string ToString() => $"({q}, {r}, {S})";
     }
 }

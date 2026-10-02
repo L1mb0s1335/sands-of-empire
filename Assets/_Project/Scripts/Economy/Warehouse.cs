@@ -9,12 +9,15 @@ namespace Runeterra.Economy
     {
         public const int BaseCapacity = 20;
 
-        private readonly Dictionary<GoodData, float> _stock = new Dictionary<GoodData, float>();
+        private readonly SortedDictionary<GoodData, float> _stock = new SortedDictionary<GoodData, float>(ContentOrder.Goods);
 
         public int Capacity { get; set; } = BaseCapacity;
         public float SpoilageMultiplier { get; set; } = 1f;
 
         public IEnumerable<KeyValuePair<GoodData, float>> Items => _stock.Where(kv => kv.Value > 0.001f);
+
+        /// <summary>Все ненулевые запасы, включая крошечные остатки (для сохранения и хеша состояния).</summary>
+        internal IEnumerable<KeyValuePair<GoodData, float>> Exact => _stock.Where(kv => kv.Value != 0f);
 
         public float Get(GoodData good) => good != null && _stock.TryGetValue(good, out var v) ? v : 0f;
 

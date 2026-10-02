@@ -10,9 +10,8 @@ namespace Runeterra.Economy
     /// </summary>
     public class Caravan
     {
-        private static int _nextId = 1;
-
-        public int Id { get; } = _nextId++;
+        /// <summary>id из счётчика торговли (ключ бросков риска в пути).</summary>
+        public int Id { get; }
         public int OwnerIndex { get; }
         public GoodData Good { get; }
         public float Amount { get; }
@@ -31,8 +30,9 @@ namespace Runeterra.Economy
         public bool AtEnd => Position >= Path.Count - 1;
         public string DestinationName => To != null ? To.Data.displayName : "заморский рынок";
 
-        public Caravan(int owner, GoodData good, float amount, City from, City to, bool bySea, List<HexCoord> path, float buyPrice)
+        public Caravan(int id, int owner, GoodData good, float amount, City from, City to, bool bySea, List<HexCoord> path, float buyPrice)
         {
+            Id = id;
             OwnerIndex = owner;
             Good = good;
             Amount = amount;

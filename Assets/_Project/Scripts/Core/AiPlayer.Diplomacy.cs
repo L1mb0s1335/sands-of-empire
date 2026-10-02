@@ -14,10 +14,6 @@ namespace Runeterra.Core
     /// </summary>
     public partial class AiPlayer
     {
-        private System.Random _diploRandom;
-
-        private System.Random Rng => _diploRandom ??= new System.Random(_game.Grid.Seed * 17 + 3);
-
         private readonly Dictionary<int, AiPersonality> _personalities = new Dictionary<int, AiPersonality>();
 
         /// <summary>Характер ИИ стороны.</summary>
@@ -105,7 +101,7 @@ namespace Runeterra.Core
             }
 
             // 3. Новая претензия: город цели, иначе город сильнейшего (коалиция), иначе слабого нелюбимого соседа.
-            if (turn > 8 && !d.EnemiesOf(me).Any() && d.ClaimsOf(me).Count() < 2 && Rng.NextDouble() < ch.ClaimChance &&
+            if (turn > 8 && !d.EnemiesOf(me).Any() && d.ClaimsOf(me).Count() < 2 && _game.Roll(DetRandom.Kind.AiClaim, me) < ch.ClaimChance &&
                 player.Gold >= Diplomacy.ClaimCost + 40)
             {
                 var mine = _game.Cities.Where(c => c.OwnerIndex == me).ToList();
@@ -144,7 +140,7 @@ namespace Runeterra.Core
                 int embargoAt = -80 + (int)(40 * (1f - ch.Trade));
                 if (!t.Embargoes(me, o) && opinion <= embargoAt && !d.AtWar(me, o)) t.SetEmbargo(me, o, true);
                 else if (t.Embargoes(me, o) && opinion > embargoAt + 30) t.SetEmbargo(me, o, false);
-                if (t.CanSignAgreement(me, o) == null && opinion >= 10 - (int)(30 * ch.Trade) && Rng.NextDouble() < 0.1 + 0.3 * ch.Trade)
+                if (t.CanSignAgreement(me, o) == null && opinion >= 10 - (int)(30 * ch.Trade) && _game.Roll(DetRandom.Kind.AiTradeAgreement, me, o) < 0.1 + 0.3 * ch.Trade)
                 {
                     if (other.IsHuman) d.Propose(me, o, ProposalKind.TradeAgreement);
                     else if (Accepts(o, me, ProposalKind.TradeAgreement)) t.SignAgreement(me, o);
@@ -190,7 +186,7 @@ namespace Runeterra.Core
             var d = _game.Diplomacy;
             int me = player.Index;
             var ch = Personality(me);
-            if (Rng.NextDouble() > 0.1 + 0.25 * ch.Caution) return;
+            if (_game.Roll(DetRandom.Kind.AiTreaty, me) > 0.1 + 0.25 * ch.Caution) return;
             foreach (var other in _game.Players.Where(p => p.Index != me && !_game.IsEliminated(p)).OrderByDescending(p => d.Opinion(me, p.Index)))
             {
                 int o = other.Index;

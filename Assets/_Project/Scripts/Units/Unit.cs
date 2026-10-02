@@ -7,8 +7,6 @@ namespace Runeterra.Units
     /// <summary>Юнит в партии. Чистое состояние без MonoBehaviour.</summary>
     public class Unit
     {
-        private static int _nextId = 1;
-
         public int Id { get; private set; }
         public UnitData Data { get; }
         public int OwnerIndex { get; }
@@ -73,9 +71,10 @@ namespace Runeterra.Units
         public event Action<Unit> Damaged;
         public event Action<Unit> Died;
 
-        public Unit(UnitData data, int ownerIndex, HexCoord coord)
+        /// <param name="id">id из счётчика партии (<c>GameState.NextUnitId</c>); 0 — пробный юнит вне партии.</param>
+        public Unit(UnitData data, int ownerIndex, HexCoord coord, int id = 0)
         {
-            Id = _nextId++;
+            Id = id;
             Data = data;
             OwnerIndex = ownerIndex;
             Coord = coord;
@@ -88,7 +87,6 @@ namespace Runeterra.Units
         internal void Restore(int id, HexCoord coord, int moves, int health, int charges, int experience, bool acted)
         {
             Id = id;
-            _nextId = Math.Max(_nextId, id + 1);
             Coord = coord;
             MovesLeft = moves;
             Health = health;

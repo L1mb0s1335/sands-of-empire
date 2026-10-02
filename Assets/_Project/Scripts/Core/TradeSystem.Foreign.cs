@@ -19,14 +19,14 @@ namespace Runeterra.Core
         public const float DealBuyMarkup = 1.2f;
         public const float DealSellDiscount = 0.8f;
 
-        private readonly HashSet<(int, int)> _agreements = new HashSet<(int, int)>();
+        private readonly SortedSet<(int, int)> _agreements = new SortedSet<(int, int)>();
         /// <summary>Эмбарго: (кто объявил, против кого).</summary>
-        private readonly HashSet<(int, int)> _embargoes = new HashSet<(int, int)>();
+        private readonly SortedSet<(int, int)> _embargoes = new SortedSet<(int, int)>();
 
         private static (int, int) Pair(int a, int b) => a < b ? (a, b) : (b, a);
 
-        internal HashSet<(int, int)> Agreements => _agreements;
-        internal HashSet<(int, int)> EmbargoSet => _embargoes;
+        internal SortedSet<(int, int)> Agreements => _agreements;
+        internal SortedSet<(int, int)> EmbargoSet => _embargoes;
 
         public bool HasAgreement(int a, int b) => _agreements.Contains(Pair(a, b));
 
@@ -119,8 +119,8 @@ namespace Runeterra.Core
 
         // ---------- Ввозная пошлина ----------
 
-        private readonly Dictionary<int, int> _importAccum = new Dictionary<int, int>();
-        internal Dictionary<int, int> ImportAccum => _importAccum;
+        private readonly SortedDictionary<int, int> _importAccum = new SortedDictionary<int, int>();
+        internal SortedDictionary<int, int> ImportAccum => _importAccum;
 
         /// <summary>Получатель заработал ввозную пошлину (зачисляется сразу, в отчёт — к его ходу).</summary>
         private void CollectImportDuty(int receiver, int amount)

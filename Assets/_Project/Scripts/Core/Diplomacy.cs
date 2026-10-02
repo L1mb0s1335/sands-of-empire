@@ -76,14 +76,14 @@ namespace Runeterra.Core
         public const int PactOpinion = -10;
 
         private readonly GameState _game;
-        private readonly Dictionary<(int, int), Relation> _relations = new Dictionary<(int, int), Relation>();
+        private readonly SortedDictionary<(int, int), Relation> _relations = new SortedDictionary<(int, int), Relation>();
 
         public List<Claim> Claims { get; } = new List<Claim>();
         public List<Proposal> Proposals { get; } = new List<Proposal>();
 
         /// <summary>Коалиция против сильнейшего: против кого (-1 — нет) и кто в ней.</summary>
         public int CoalitionTarget { get; internal set; } = -1;
-        public HashSet<int> Coalition { get; } = new HashSet<int>();
+        public SortedSet<int> Coalition { get; } = new SortedSet<int>();
 
         public bool InCoalition(int a) => CoalitionTarget >= 0 && Coalition.Contains(a);
 

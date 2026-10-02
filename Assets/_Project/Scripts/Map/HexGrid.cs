@@ -32,6 +32,33 @@ namespace Runeterra.Map
             Generate();
         }
 
+        /// <summary>Изменяемые поля клеток (местность, объекты, дороги, ресурсы, города) — снимок для отката карты.</summary>
+        public sealed class MutableSnapshot
+        {
+            internal readonly List<(HexTile tile, TerrainType terrain, TileFeature feature, bool road, string resource, string cityId)> Tiles =
+                new List<(HexTile, TerrainType, TileFeature, bool, string, string)>();
+        }
+
+        public MutableSnapshot CaptureMutable()
+        {
+            var snap = new MutableSnapshot();
+            foreach (var t in _tiles.Values) snap.Tiles.Add((t, t.Terrain, t.Feature, t.HasRoad, t.Resource, t.CityId));
+            return snap;
+        }
+
+        /// <summary>Вернуть клетки к снимку (для повторных прогонов партии на той же карте).</summary>
+        public void RestoreMutable(MutableSnapshot snap)
+        {
+            foreach (var (t, terrain, feature, road, resource, cityId) in snap.Tiles)
+            {
+                t.Terrain = terrain;
+                t.Feature = feature;
+                t.HasRoad = road;
+                t.Resource = resource;
+                t.CityId = cityId;
+            }
+        }
+
         public bool TryGetTile(HexCoord coord, out HexTile tile) => _tiles.TryGetValue(coord, out tile);
 
         public HexTile GetTile(HexCoord coord) => _tiles.TryGetValue(coord, out var t) ? t : null;

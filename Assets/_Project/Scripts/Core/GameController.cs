@@ -78,20 +78,12 @@ namespace Runeterra.Core
             if (!map.IsBuilt) map.Build();
 
             // Настройки партии: из сохранения или из меню старта (остаются для «Заново»).
+            _pristineMap ??= map.Grid.CaptureMutable();
             var setup = save != null
                 ? new GameSetup { Scenario = (Scenario)save.scenario, TurnLimit = save.turnLimit, HumanRegion = save.humanRegion }
                 : GameSetup.Pending ?? new GameSetup();
-            var regions = map.regions.Where(r => r != null).ToList();
-            string humanRegion = regions.Any(r => r.id == setup.HumanRegion) ? setup.HumanRegion : regions[0].id;
-            var players = new List<PlayerState>();
-            foreach (var region in regions)
-                players.Add(new PlayerState(players.Count, region, isHuman: region.id == humanRegion) { Gold = region.startingGold });
-
-            State = new GameState(map.Grid, players, market, p => _ai.PlayTurn(p), goods, buildings, techs);
-            State.SetPort(port);
-            State.Configure(setup.Scenario, setup.TurnLimit);
-            State.Shop.AddRange(shop);
-            _ai = new AiPlayer(State, shop, market, buildings);
+            (State, _ai) = CreateState(setup);
+            var players = State.Players;
             State.Trade.Dispatched += c => _caravans[c] = CaravanView.Create(c, map, Players[c.OwnerIndex].Region.primaryColor, map.baseMaterial);
             State.Trade.Moved += c => { if (_caravans.TryGetValue(c, out var v)) v.Refresh(); };
             State.Trade.Finished += (c, ok) =>
@@ -134,22 +126,12 @@ namespace Runeterra.Core
                 return;
             }
 
-            foreach (var placed in map.PlacedCities)
-            {
-                var owner = players.FirstOrDefault(p => p.Region == placed.region);
-                if (owner == null) continue;
-                var city = new City(placed.data, placed.coord, owner.Index);
-                foreach (var t in map.TerritoryOf(placed.coord)) city.Territory.Add(t);
-                if (State.Grain != null) city.Warehouse.Add(State.Grain, 10); // стартовый запас зерна
-                State.Cities.Add(city);
-            }
+            SetupNewGame(State);
             foreach (var city in State.Cities)
             {
                 CreateWallsBar(city);
                 OnCityChanged(city);
             }
-            foreach (var p in players) SpawnStartingUnits(p);
-            State.Diplomacy.Setup();
             Turns.PlayerTurnStarted += p => { if (p.IsHuman && Winner == null) SelectNextUnit(); };
 
             map.ShowDeposits(goods);
@@ -162,16 +144,78 @@ namespace Runeterra.Core
 
         private IReadOnlyList<PlayerState> Players => State.Players;
 
-        /// <summary>Продолжение сохранённой партии: состояние из файла, затем карта и туман подтягиваются под него.</summary>
-        private void InitializeFromSave(SaveSystem.SaveData save, List<PlayerState> players)
+        // ---------- Создание партии (общее для сцены и проверки детерминированности) ----------
+
+        /// <summary>Изменяемые поля клеток карты сразу после её построения (до партии).</summary>
+        private HexGrid.MutableSnapshot _pristineMap;
+
+        /// <summary>Игроки по регионам карты, правила и ИИ — без визуала.</summary>
+        private (GameState state, AiPlayer ai) CreateState(GameSetup setup)
         {
-            var units = shop.Concat(players.SelectMany(p => p.Region.startingUnits)).Where(u => u != null).Distinct();
-            SaveSystem.Apply(save, State, _ai, new SaveSystem.Content
+            var regions = map.regions.Where(r => r != null).ToList();
+            string humanRegion = regions.Any(r => r.id == setup.HumanRegion) ? setup.HumanRegion : regions[0].id;
+            var players = new List<PlayerState>();
+            foreach (var region in regions)
+                players.Add(new PlayerState(players.Count, region, isHuman: region.id == humanRegion) { Gold = region.startingGold });
+
+            AiPlayer ai = null;
+            var state = new GameState(map.Grid, players, market, p => ai.PlayTurn(p), goods, buildings, techs);
+            state.SetPort(port);
+            state.Configure(setup.Scenario, setup.TurnLimit);
+            state.SetGameSeed(setup.Seed ?? System.Guid.NewGuid().GetHashCode());
+            state.Shop.AddRange(shop);
+            ai = new AiPlayer(state, shop, market, buildings);
+            return (state, ai);
+        }
+
+        /// <summary>Новая партия: города по карте, стартовые юниты, исходная дипломатия.</summary>
+        private void SetupNewGame(GameState state)
+        {
+            foreach (var placed in map.PlacedCities)
             {
-                Units = units, Goods = goods, Buildings = buildings, Techs = techs,
-                Districts = new[] { market, port }.Where(d => d != null),
-                Cities = map.PlacedCities.Select(pc => pc.data).Concat(map.regions.Where(r => r != null).SelectMany(r => r.cities)),
-            });
+                var owner = state.Players.FirstOrDefault(p => p.Region == placed.region);
+                if (owner == null) continue;
+                var city = new City(placed.data, placed.coord, owner.Index);
+                foreach (var t in map.TerritoryOf(placed.coord)) city.Territory.Add(t);
+                if (state.Grain != null) city.Warehouse.Add(state.Grain, 10); // стартовый запас зерна
+                state.Cities.Add(city);
+            }
+            foreach (var p in state.Players) SpawnStartingUnits(state, p);
+            state.Diplomacy.Setup();
+        }
+
+        private SaveSystem.Content SaveContent(IEnumerable<PlayerState> players) => new SaveSystem.Content
+        {
+            Units = shop.Concat(players.SelectMany(p => p.Region.startingUnits)).Where(u => u != null).Distinct(),
+            Goods = goods, Buildings = buildings, Techs = techs,
+            Districts = new[] { market, port }.Where(d => d != null),
+            Cities = map.PlacedCities.Select(pc => pc.data).Concat(map.regions.Where(r => r != null).SelectMany(r => r.cities)),
+        };
+
+        /// <summary>
+        /// Партия без сцены для проверки детерминированности: карта возвращается к исходному виду,
+        /// затем новая игра (Turns.Start) или состояние из сохранения. Сцена при этом не обновляется.
+        /// </summary>
+        internal (GameState state, AiPlayer ai) CreateHeadless(GameSetup setup, SaveSystem.SaveData save = null)
+        {
+            map.Grid.RestoreMutable(_pristineMap);
+            if (save != null) setup = new GameSetup { Scenario = (Scenario)save.scenario, TurnLimit = save.turnLimit, HumanRegion = save.humanRegion, Seed = setup.Seed };
+            var (state, ai) = CreateState(setup);
+            if (save != null)
+            {
+                SaveSystem.Apply(save, state, ai, SaveContent(state.Players));
+                return (state, ai);
+            }
+            SetupNewGame(state);
+            state.Turns.Start();
+            state.Vision.RefreshAll();
+            return (state, ai);
+        }
+
+        /// <summary>Продолжение сохранённой партии: состояние из файла, затем карта и туман подтягиваются под него.</summary>
+        private void InitializeFromSave(SaveSystem.SaveData save, IReadOnlyList<PlayerState> players)
+        {
+            SaveSystem.Apply(save, State, _ai, SaveContent(players));
             foreach (var city in State.Cities)
             {
                 CreateWallsBar(city);
@@ -230,18 +274,21 @@ namespace Runeterra.Core
         /// <summary>Снимок состояния в JSON (для автопроверки сохранения).</summary>
         public string Snapshot() => SaveSystem.ToJson(SaveSystem.Capture(State, _ai));
 
-        private void SpawnStartingUnits(PlayerState player)
+        /// <summary>Хеш состояния партии по разделам.</summary>
+        public StateHash Hash() => StateHash.Of(State, _ai);
+
+        private static void SpawnStartingUnits(GameState state, PlayerState player)
         {
-            var capital = State.CapitalOf(player);
+            var capital = state.CapitalOf(player);
             if (capital == null) return;
             // Сначала соседние клетки, чтобы юниты не прятались в застройке столицы.
             var spots = Enumerable.Range(0, 6).Select(d => capital.Coord.Neighbor((d + 3) % 6)).Append(capital.Coord);
             foreach (var data in player.Region.startingUnits)
             {
                 if (data == null) continue;
-                var spot = spots.FirstOrDefault(State.IsFreeLand);
-                if (!State.IsFreeLand(spot)) break;
-                State.Spawn(data, player, spot);
+                var spot = spots.FirstOrDefault(state.IsFreeLand);
+                if (!state.IsFreeLand(spot)) break;
+                state.Spawn(data, player, spot);
             }
         }
 

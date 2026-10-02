@@ -34,9 +34,9 @@ namespace Runeterra.Core
         /// <summary>Сколько боевых юнитов нужно, чтобы идти в наступление.</summary>
         public const int ArmyToAttack = 3;
 
-        private readonly HashSet<int> _attacking = new HashSet<int>();
+        private readonly SortedSet<int> _attacking = new SortedSet<int>();
         /// <summary>id юнитов, идущих в наступление (для сохранения).</summary>
-        internal HashSet<int> Attacking => _attacking;
+        internal SortedSet<int> Attacking => _attacking;
 
         /// <summary>План армии на ход: наступаем ли и на какой город.</summary>
         private struct Plan
