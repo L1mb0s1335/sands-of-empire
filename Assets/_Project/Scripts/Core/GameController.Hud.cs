@@ -427,13 +427,13 @@ namespace Runeterra.Core
             bool rushable = build != null && build.Unit == null;
             var rush = rushable ? State.CanRush(city, human) : build == null ? "ничего не строится" : "юнита не ускорить — его можно купить в «Строить»";
             GUI.enabled = rushable && rush == null;
-            if (Button(rushRect, rushable ? $"Ускорить · {State.RushCost(city)} зол." : "Ускорить")) State.Rush(city, human);
+            if (Button(rushRect, rushable ? $"Ускорить · {State.RushCost(city)} зол." : "Ускорить")) Do(new RushCommand(human.Index, city));
             GUI.enabled = true;
             Tip(rushRect, rush == null ? $"Ускорить «{build.Name}» за {State.RushCost(city)} золота" : $"Ускорить: {rush}" + (rushable ? $" ({State.RushCost(city)} зол.)" : ""));
             var draftRect = new Rect(x + (bw + gap) * 3, by, bw, 34);
             var draft = State.CanDraft(city, human);
             GUI.enabled = draft == null;
-            if (Button(draftRect, "Ополчение")) State.Draft(city, human);
+            if (Button(draftRect, "Ополчение")) Do(new DraftCommand(human.Index, city));
             GUI.enabled = true;
             Tip(draftRect, draft == null ? "Призвать ополчение: Воин даром, −1 житель" : $"Призыв: {draft}");
             return p;
@@ -505,13 +505,13 @@ namespace Runeterra.Core
                 var upkeep = item.Building != null && item.Building.upkeep > 0 ? $" · −{item.Building.upkeep} зол./х." : "";
                 var label = (item.Is(city.CurrentBuild) ? $"<color={CGold}>» </color>" : "") + $"<b>{item.Name}</b>{count} · {State.TurnsToBuild(city, item)} х.{upkeep}" +
                             (canBuild ? "" : $" <size={Sz(11)}>({reason})</size>");
-                if (GUI.Button(R(new Rect(0, y, colW, rowH - 4)), label, Row)) State.SetBuild(city, item);
+                if (GUI.Button(R(new Rect(0, y, colW, rowH - 4)), label, Row)) Do(new SetBuildCommand(human.Index, city, item));
                 if (item.Unit != null)
                 {
                     bool ok = State.CanBuy(human, city, item.Unit, out var why);
                     GUI.enabled = ok;
                     var buy = $"Купить · {State.BuyCost(human, item.Unit)} зол." + (ok || why == "не хватает золота" ? "" : $" <size={Sz(10)}>({why})</size>");
-                    if (GUI.Button(R(new Rect(colW + 8, y, buyW, rowH - 4)), buy, Btn)) State.Buy(human, city, item.Unit);
+                    if (GUI.Button(R(new Rect(colW + 8, y, buyW, rowH - 4)), buy, Btn)) Do(new BuyUnitCommand(human.Index, city, item.Unit));
                 }
                 else if (item.Building != null && item.Building.IsWorkshop)
                 {
@@ -617,7 +617,7 @@ namespace Runeterra.Core
                 var road = State.CanBuildRoad(_selected);
                 var rr = new Rect(x + (bw + gap) * i, by, bw, 40);
                 GUI.enabled = road == null;
-                if (Button(rr, road == null ? "Дорога (R)" : $"Дорога\n<size={Sz(11)}>{road}</size>") && State.BuildRoad(_selected)) AfterAction();
+                if (Button(rr, road == null ? "Дорога (R)" : $"Дорога\n<size={Sz(11)}>{road}</size>") && Do(new BuildRoadCommand(_human, _selected.Id))) AfterAction();
                 GUI.enabled = true;
                 Tip(rr, road);
             }
@@ -704,12 +704,12 @@ namespace Runeterra.Core
 
         private Rect TreasuryRect() => new Rect(410, 88, 580, 486);
 
-        private void TaxRow(ref float y, Rect r, string name, float rate, System.Action<float> set, int income, string downside)
+        private void TaxRow(ref float y, Rect r, string name, float rate, Rate kind, int income, string downside)
         {
             float pad = 22;
             Label(new Rect(r.x + pad, y, 360, 26), $"<b>{name}</b> {rate:0%}  <color={CGold}>+{income}/ход</color>", InkMid);
-            if (Button(new Rect(r.xMax - pad - 88, y, 40, 26), "−")) set(Mathf.Max(0f, rate - 0.05f));
-            if (Button(new Rect(r.xMax - pad - 42, y, 40, 26), "+")) set(Mathf.Min(0.3f, rate + 0.05f));
+            if (Button(new Rect(r.xMax - pad - 88, y, 40, 26), "−")) Do(new SetRateCommand(_human, kind, Mathf.Max(0f, rate - 0.05f)));
+            if (Button(new Rect(r.xMax - pad - 42, y, 40, 26), "+")) Do(new SetRateCommand(_human, kind, Mathf.Min(0.3f, rate + 0.05f)));
             y += 26;
             Label(new Rect(r.x + pad, y, r.width - pad * 2, 36), downside, CaptionInk);
             y += 36;
@@ -723,18 +723,18 @@ namespace Runeterra.Core
             Label(new Rect(r.x + pad, y, r.width - pad * 2, 30), "Казна и налоги", Heading);
             if (CloseButton(r)) _showTreasury = false;
             y += 38;
-            TaxRow(ref y, r, "Налог на землю", human.LandTax, v => human.LandTax = v, human.LandIncome,
+            TaxRow(ref y, r, "Налог на землю", human.LandTax, Rate.LandTax, human.LandIncome,
                 human.LandTax >= GameState.HeavyTax
                     ? $"<color={CBad}>Тяжёлый: при неурожае крестьяне бегут (−1 житель, 35%)</color>"
                     : "Ставка × половина стоимости добытого сырья. От 15% при неурожае крестьяне бегут");
-            TaxRow(ref y, r, "Подушный налог", human.PeopleTax, v => human.PeopleTax = v, human.PeopleIncome,
+            TaxRow(ref y, r, "Подушный налог", human.PeopleTax, Rate.PeopleTax, human.PeopleIncome,
                 $"2 зол. × ставка с каждого жителя. Рост городов медленнее: порог ×{1f + 2f * human.PeopleTax:0.0#}");
-            TaxRow(ref y, r, "Налог на роскошь", human.LuxuryTax, v => human.LuxuryTax = v, human.LuxuryIncome,
+            TaxRow(ref y, r, "Налог на роскошь", human.LuxuryTax, Rate.LuxuryTax, human.LuxuryIncome,
                 human.LuxuryTax >= GameState.HeavyTax
                     ? $"<color={CBad}>Знать недовольна: производство Городков и крупнее −{human.LuxuryTax:0%}</color>"
                     : "С потреблённых ткани и сластей. От 15% злит знать (−производство)");
             float smuggle = GameState.SmugglingShare(human.Tariff, false);
-            TaxRow(ref y, r, "Торговая пошлина", human.Tariff, v => human.Tariff = v, human.TariffIncomeLastTurn,
+            TaxRow(ref y, r, "Торговая пошлина", human.Tariff, Rate.Tariff, human.TariffIncomeLastTurn,
                 $"С каждой доставленной партии. Контрабанда: {smuggle:0%} пошлины (−{human.SmuggledLastTurn} за ход). " +
                 "Лечится снижением пошлины (легализация) или стражей в городе (−20%)");
 
@@ -742,9 +742,9 @@ namespace Runeterra.Core
             y += 8;
             Label(new Rect(r.x + pad, y, 300, 28), $"<b>Резервная казна</b> {human.Reserve}", InkMid);
             GUI.enabled = human.Gold >= 10;
-            if (Button(new Rect(r.xMax - pad - 132, y, 62, 28), "+10")) { human.Gold -= 10; human.Reserve += 10; }
+            if (Button(new Rect(r.xMax - pad - 132, y, 62, 28), "+10")) Do(new ReserveCommand(human.Index, 10));
             GUI.enabled = human.Reserve >= 10;
-            if (Button(new Rect(r.xMax - pad - 64, y, 62, 28), "−10")) { human.Gold += 10; human.Reserve -= 10; }
+            if (Button(new Rect(r.xMax - pad - 64, y, 62, 28), "−10")) Do(new ReserveCommand(human.Index, -10));
             GUI.enabled = true;
             y += 34;
 
@@ -754,9 +754,9 @@ namespace Runeterra.Core
                 $"<b>Монета</b>: порча {human.Debasement:0%}, инфляция {State.Inflation(human):0%}\n" +
                 $"<size={Sz(12)}>Купцов и пошлин −{human.Debasement:0%}</size>", Body);
             GUI.enabled = human.Debasement < GameState.MaxDebasement - 0.001f;
-            if (Button(new Rect(r.xMax - pad - bw * 2 - 6, y, bw, 30), $"Испортить +{State.DebaseGain(human)}")) State.Debase(human);
+            if (Button(new Rect(r.xMax - pad - bw * 2 - 6, y, bw, 30), $"Испортить +{State.DebaseGain(human)}")) Do(new TreasuryCommand(human.Index, TreasuryAction.Debase));
             GUI.enabled = human.Debasement > 0.001f && human.Gold >= State.RecoinCost(human);
-            if (Button(new Rect(r.xMax - pad - bw, y, bw, 30), $"Перечеканить −{State.RecoinCost(human)}")) State.Recoin(human);
+            if (Button(new Rect(r.xMax - pad - bw, y, bw, 30), $"Перечеканить −{State.RecoinCost(human)}")) Do(new TreasuryCommand(human.Index, TreasuryAction.Recoin));
             GUI.enabled = true;
             y += 46;
 
@@ -768,9 +768,9 @@ namespace Runeterra.Core
                 (State.IsBankrupt(human) ? $", <color={CBad}>банкрот ещё {human.BankruptUntil - Turns.Turn} х.: нет торговли</color>" : "") +
                 (human.MissedPayments > 0 ? $", просрочек {human.MissedPayments}" : "") + "</size>", Body);
             GUI.enabled = State.CanBorrow(human);
-            if (Button(new Rect(r.xMax - pad - bw * 2 - 6, y, bw, 30), $"Заём +{GameState.LoanStep}")) State.Borrow(human);
+            if (Button(new Rect(r.xMax - pad - bw * 2 - 6, y, bw, 30), $"Заём +{GameState.LoanStep}")) Do(new TreasuryCommand(human.Index, TreasuryAction.Borrow));
             GUI.enabled = human.Debt > 0 && human.Gold >= Mathf.Min(GameState.LoanStep, human.Debt);
-            if (Button(new Rect(r.xMax - pad - bw, y, bw, 30), $"Вернуть {Mathf.Min(GameState.LoanStep, Mathf.Max(human.Debt, 0))}")) State.Repay(human);
+            if (Button(new Rect(r.xMax - pad - bw, y, bw, 30), $"Вернуть {Mathf.Min(GameState.LoanStep, Mathf.Max(human.Debt, 0))}")) Do(new TreasuryCommand(human.Index, TreasuryAction.Repay));
             GUI.enabled = true;
             y += 48;
 
@@ -843,7 +843,7 @@ namespace Runeterra.Core
                           $"\n<size={Sz(11)}>{status}{(t.exclusiveWith != null && !known && !doctrine ? $" <color={CViolet}>развилка</color>" : "")}</size>";
                     GUI.enabled = available || known || current;
                     var style = known ? NodeKnown : current ? NodeCurrent : Node;
-                    if (GUI.Button(R(b), label, style) && available) State.Tech.Choose(human, t);
+                    if (GUI.Button(R(b), label, style) && available) Do(new ResearchCommand(human.Index, t.id));
                     GUI.enabled = true;
                     if (b.Contains(mouse)) _hoverTech = t;
                 }

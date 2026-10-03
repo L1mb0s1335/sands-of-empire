@@ -137,8 +137,7 @@ namespace Runeterra.Core
             map.ShowDeposits(goods);
             _minimap = new Minimap(State, map, _human);
             FocusCamera();
-            Turns.Start();
-            State.Vision.RefreshAll();
+            State.StartNewGame();
             ApplyFog();
         }
 
@@ -149,20 +148,20 @@ namespace Runeterra.Core
         /// <summary>Изменяемые поля клеток карты сразу после её построения (до партии).</summary>
         private HexGrid.MutableSnapshot _pristineMap;
 
-        /// <summary>Игроки по регионам карты, правила и ИИ — без визуала.</summary>
-        private (GameState state, AiPlayer ai) CreateState(GameSetup setup)
+        /// <summary>Игроки по регионам карты, правила и ИИ — без визуала. replay — ходы ИИ берутся из журнала, а не из ИИ.</summary>
+        private (GameState state, AiPlayer ai) CreateState(GameSetup setup, CommandReplay replay = null)
         {
             var regions = map.regions.Where(r => r != null).ToList();
             string humanRegion = regions.Any(r => r.id == setup.HumanRegion) ? setup.HumanRegion : regions[0].id;
             var players = new List<PlayerState>();
             foreach (var region in regions)
-                players.Add(new PlayerState(players.Count, region, isHuman: region.id == humanRegion) { Gold = region.startingGold });
+                players.Add(new PlayerState(players.Count, region, isHuman: region.id == humanRegion));
 
             AiPlayer ai = null;
-            var state = new GameState(map.Grid, players, market, p => ai.PlayTurn(p), goods, buildings, techs);
+            var state = new GameState(map.Grid, players, market, replay != null ? (System.Action<PlayerState>)replay.AiTurn : p => ai.PlayTurn(p), goods, buildings, techs);
+            replay?.Attach(state);
             state.SetPort(port);
-            state.Configure(setup.Scenario, setup.TurnLimit);
-            state.SetGameSeed(setup.Seed ?? System.Guid.NewGuid().GetHashCode());
+            state.Configure(setup.Scenario, setup.TurnLimit, setup.Seed ?? System.Guid.NewGuid().GetHashCode());
             state.Shop.AddRange(shop);
             ai = new AiPlayer(state, shop, market, buildings);
             return (state, ai);
@@ -196,26 +195,25 @@ namespace Runeterra.Core
         /// Партия без сцены для проверки детерминированности: карта возвращается к исходному виду,
         /// затем новая игра (Turns.Start) или состояние из сохранения. Сцена при этом не обновляется.
         /// </summary>
-        internal (GameState state, AiPlayer ai) CreateHeadless(GameSetup setup, SaveSystem.SaveData save = null)
+        internal (GameState state, AiPlayer ai) CreateHeadless(GameSetup setup, SaveSystem.SaveData save = null, CommandReplay replay = null)
         {
             map.Grid.RestoreMutable(_pristineMap);
             if (save != null) setup = new GameSetup { Scenario = (Scenario)save.scenario, TurnLimit = save.turnLimit, HumanRegion = save.humanRegion, Seed = setup.Seed };
-            var (state, ai) = CreateState(setup);
+            var (state, ai) = CreateState(setup, replay);
             if (save != null)
             {
-                SaveSystem.Apply(save, state, ai, SaveContent(state.Players));
+                SaveSystem.Apply(save, state, SaveContent(state.Players));
                 return (state, ai);
             }
             SetupNewGame(state);
-            state.Turns.Start();
-            state.Vision.RefreshAll();
+            state.StartNewGame();
             return (state, ai);
         }
 
         /// <summary>Продолжение сохранённой партии: состояние из файла, затем карта и туман подтягиваются под него.</summary>
         private void InitializeFromSave(SaveSystem.SaveData save, IReadOnlyList<PlayerState> players)
         {
-            SaveSystem.Apply(save, State, _ai, SaveContent(players));
+            SaveSystem.Apply(save, State, SaveContent(players));
             foreach (var city in State.Cities)
             {
                 CreateWallsBar(city);
@@ -249,7 +247,7 @@ namespace Runeterra.Core
             if (!CanSave) return false;
             try
             {
-                SaveSystem.Save(State, _ai);
+                SaveSystem.Save(State);
                 _lastMessage = $"Партия сохранена (ход {Turns.Turn})";
                 return true;
             }
@@ -272,10 +270,10 @@ namespace Runeterra.Core
         }
 
         /// <summary>Снимок состояния в JSON (для автопроверки сохранения).</summary>
-        public string Snapshot() => SaveSystem.ToJson(SaveSystem.Capture(State, _ai));
+        public string Snapshot() => SaveSystem.ToJson(SaveSystem.Capture(State));
 
         /// <summary>Хеш состояния партии по разделам.</summary>
-        public StateHash Hash() => StateHash.Of(State, _ai);
+        public StateHash Hash() => StateHash.Of(State);
 
         private static void SpawnStartingUnits(GameState state, PlayerState player)
         {
@@ -368,7 +366,7 @@ namespace Runeterra.Core
             if (Input.GetMouseButtonDown(1) && _selected != null && _hovered != null) Command(_hovered.Value);
             if (Input.GetKeyDown(KeyCode.B) && _selected != null) TryBuildDistrict(market);
             if (Input.GetKeyDown(KeyCode.P) && _selected != null) TryBuildDistrict(port);
-            if (Input.GetKeyDown(KeyCode.R) && _selected != null && State.BuildRoad(_selected)) AfterAction();
+            if (Input.GetKeyDown(KeyCode.R) && _selected != null && Do(new BuildRoadCommand(_human, _selected.Id))) AfterAction();
             if (Input.GetKeyDown(KeyCode.F) && _selected != null) TryFoundCity();
             if (Input.GetKeyDown(KeyCode.Tab)) SelectNextUnit();
             if (Input.GetKeyDown(KeyCode.T)) _showTreasury = !_showTreasury;
@@ -451,21 +449,21 @@ namespace Runeterra.Core
             if (_selected.MovesLeft <= 0) return;
             if (VisibleTarget(_selected, target))
             {
-                if (GameState.CanFight(_selected)) State.AttackTarget(_selected, target);
+                if (GameState.CanFight(_selected)) Do(new AttackCommand(_human, _selected.Id, target));
             }
-            else State.MoveUnit(_selected, State.PathFor(_selected, target));
+            else Do(new MoveUnitCommand(_human, _selected.Id, State.PathFor(_selected, target)));
             AfterAction();
         }
 
         private void TryFoundCity()
         {
-            if (_selected == null || State.FoundCity(_selected) == null) return;
+            if (_selected == null || !Do(new FoundCityCommand(_human, _selected.Id))) return;
             AfterAction();
         }
 
         private void TryBuildDistrict(DistrictData d)
         {
-            if (_selected == null || d == null || !State.BuildDistrict(_selected, d)) return;
+            if (_selected == null || d == null || !Do(new BuildDistrictCommand(_human, _selected.Id, d.id))) return;
             AfterAction();
         }
 
@@ -577,13 +575,16 @@ namespace Runeterra.Core
         /// <summary>Сколько миллисекунд заняли ходы ИИ после последнего «Конца хода» игрока.</summary>
         public long LastAiRoundMs { get; private set; }
 
+        /// <summary>Действие игрока — через шину команд (как у ИИ; попадает в журнал партии).</summary>
+        private bool Do(ICommand command) => State.Commands.Execute(command);
+
         public void EndTurn()
         {
             if (Winner != null) return;
             Select(null);
             _selectedCity = null;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            Turns.EndTurn();
+            Do(new EndTurnCommand(Turns.CurrentIndex));
             LastAiRoundMs = sw.ElapsedMilliseconds;
         }
 
@@ -594,8 +595,9 @@ namespace Runeterra.Core
         {
             if (Winner == null && Turns.Current.IsHuman)
             {
+                int me = Turns.CurrentIndex;
                 foreach (var p in State.Diplomacy.Proposals.ToList())
-                    State.Diplomacy.Answer(p, Turns.Current.Index, _ai.Accepts(Turns.Current.Index, p.From, p.Kind));
+                    Do(new AnswerProposalCommand(me, p.From, p.Kind, _ai.Accepts(me, p.From, p.Kind)));
                 _ai.PlayTurn(Turns.Current);
             }
             AfterAction();

@@ -11,52 +11,52 @@ namespace Runeterra.Core
         public RegionData Region { get; }
         public bool IsHuman { get; }
         public List<Unit> Units { get; } = new List<Unit>();
-        public int Gold { get; set; }
+        public int Gold { get; internal set; }
         /// <summary>Пошлина с караванов (0…0.3).</summary>
-        public float Tariff { get; set; } = 0.1f;
+        public float Tariff { get; internal set; } = 0.1f;
         /// <summary>Пошлины, собранные за последний ход.</summary>
-        public int TariffIncomeLastTurn { get; set; }
+        public int TariffIncomeLastTurn { get; internal set; }
         /// <summary>Ввозные пошлины с иностранных караванов за последний круг ходов.</summary>
-        public int ImportDutyLastTurn { get; set; }
+        public int ImportDutyLastTurn { get; internal set; }
         /// <summary>Всего пошлин за партию (для очков).</summary>
-        public int TradeIncomeTotal { get; set; }
+        public int TradeIncomeTotal { get; internal set; }
 
         // ---------- Налоги и казна ----------
 
         /// <summary>Земельный налог: доля стоимости добытого сырья.</summary>
-        public float LandTax { get; set; } = 0.1f;
+        public float LandTax { get; internal set; } = 0.1f;
         /// <summary>Подушный налог: золото с каждого жителя.</summary>
-        public float PeopleTax { get; set; } = 0.05f;
+        public float PeopleTax { get; internal set; } = 0.05f;
         /// <summary>Налог на роскошь: доля стоимости потреблённых предметов роскоши.</summary>
-        public float LuxuryTax { get; set; } = 0.05f;
+        public float LuxuryTax { get; internal set; } = 0.05f;
 
         /// <summary>Резервная казна: не тратится на покупки, закрывает шоки (засуха, пожар).</summary>
-        public int Reserve { get; set; }
+        public int Reserve { get; internal set; }
 
         /// <summary>Сбор налогов за последний ход: земля, люди, роскошь; и сколько ушло контрабандой.</summary>
-        public int LandIncome { get; set; }
-        public int PeopleIncome { get; set; }
-        public int LuxuryIncome { get; set; }
-        public int SmuggledLastTurn { get; set; }
+        public int LandIncome { get; internal set; }
+        public int PeopleIncome { get; internal set; }
+        public int LuxuryIncome { get; internal set; }
+        public int SmuggledLastTurn { get; internal set; }
 
         // ---------- Монета и долги ----------
 
         /// <summary>Порча монеты (0…0.5): быстрый доход, но инфляция и уход торговцев.</summary>
-        public float Debasement { get; set; }
+        public float Debasement { get; internal set; }
         /// <summary>Долг купеческим домам.</summary>
-        public int Debt { get; set; }
-        public int MissedPayments { get; set; }
-        public int InterestLastTurn { get; set; }
+        public int Debt { get; internal set; }
+        public int MissedPayments { get; internal set; }
+        public int InterestLastTurn { get; internal set; }
         /// <summary>До этого хода действует банкротство: нет торговли и займов.</summary>
-        public int BankruptUntil { get; set; }
+        public int BankruptUntil { get; internal set; }
         /// <summary>До этого хода рейтинг не выше C (память о банкротстве).</summary>
-        public int StigmaUntil { get; set; }
+        public int StigmaUntil { get; internal set; }
 
         // ---------- Развитие ----------
 
         /// <summary>Изученные узлы (по id).</summary>
         public SortedSet<string> Techs { get; } = new SortedSet<string>(StringComparer.Ordinal);
-        public Runeterra.Tech.TechData Researching { get; set; }
+        public Runeterra.Tech.TechData Researching { get; internal set; }
 
         /// <summary>Накопленный прогресс по каждому узлу (сохраняется при смене темы, растёт и от практики).</summary>
         public SortedDictionary<string, float> TechProgress { get; } = new SortedDictionary<string, float>(StringComparer.Ordinal);
@@ -72,15 +72,15 @@ namespace Runeterra.Core
         public SortedSet<string> Epochs { get; } = new SortedSet<string>(StringComparer.Ordinal);
 
         /// <summary>Практика за последний ход: караваны доставлены, боёв проведено.</summary>
-        public int CaravansDeliveredLastTurn { get; set; }
-        public int BattlesThisTurn { get; set; }
-        public int BattlesLastTurn { get; set; }
+        public int CaravansDeliveredLastTurn { get; internal set; }
+        public int BattlesThisTurn { get; internal set; }
+        public int BattlesLastTurn { get; internal set; }
         /// <summary>Ветки без носителей знаний: сколько ходов подряд.</summary>
         public SortedDictionary<Runeterra.Tech.TechBranch, int> BranchWithoutCarrier { get; } = new SortedDictionary<Runeterra.Tech.TechBranch, int>();
-        public int ScienceLastTurn { get; set; }
-        public int ArmyUpkeepLastTurn { get; set; }
+        public int ScienceLastTurn { get; internal set; }
+        public int ArmyUpkeepLastTurn { get; internal set; }
         /// <summary>Лет интенсивного земледелия (истощение почвы).</summary>
-        public int SoilExhaustionYears { get; set; }
+        public int SoilExhaustionYears { get; internal set; }
 
         public bool Has(string techId) => Techs.Contains(techId);
 
@@ -89,6 +89,7 @@ namespace Runeterra.Core
             Index = index;
             Region = region;
             IsHuman = isHuman;
+            Gold = region != null ? region.startingGold : 0;
         }
     }
 
@@ -107,12 +108,10 @@ namespace Runeterra.Core
         public event Action<int> NewTurnStarted;
 
         private readonly List<PlayerState> _players;
-        private readonly Action<PlayerState> _aiTurn;
 
-        public TurnManager(List<PlayerState> players, Action<PlayerState> aiTurn)
+        public TurnManager(List<PlayerState> players)
         {
             _players = players;
-            _aiTurn = aiTurn;
         }
 
         /// <summary>Восстановление из сохранения: ход продолжается с того же игрока, без начисления дохода.</summary>
@@ -154,15 +153,11 @@ namespace Runeterra.Core
             foreach (var p in _players) p.Units.RemoveAll(u => !u.IsAlive);
         }
 
+        /// <summary>Начало хода стороны. Ходы ИИ отыгрывает шина команд (<see cref="CommandBus.RunAiTurns"/>).</summary>
         private void BeginPlayerTurn()
         {
             foreach (var u in Current.Units) u.ResetMoves();
             PlayerTurnStarted?.Invoke(Current);
-            if (!Current.IsHuman)
-            {
-                _aiTurn?.Invoke(Current);
-                EndTurn();
-            }
         }
     }
 }

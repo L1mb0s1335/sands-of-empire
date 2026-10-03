@@ -34,9 +34,11 @@ namespace Runeterra.Core
         /// <summary>Сколько боевых юнитов нужно, чтобы идти в наступление.</summary>
         public const int ArmyToAttack = 3;
 
-        private readonly SortedSet<int> _attacking = new SortedSet<int>();
-        /// <summary>id юнитов, идущих в наступление (для сохранения).</summary>
-        internal SortedSet<int> Attacking => _attacking;
+        /// <summary>Действие ИИ — через шину команд, как у игрока (попадает в журнал партии).</summary>
+        private bool Do(ICommand command) => _game.Commands.Execute(command);
+
+        private bool Move(Unit unit, List<HexCoord> path, HexCoord? stopNear = null, int stopDist = 0) =>
+            Do(new MoveUnitCommand(unit.OwnerIndex, unit.Id, path, stopNear, stopDist));
 
         /// <summary>План армии на ход: наступаем ли и на какой город.</summary>
         private struct Plan
@@ -84,15 +86,15 @@ namespace Runeterra.Core
             // Собранной считаем армию, если у столицы стоит не меньше 3 и хотя бы половина юнитов
             // (все сразу у стен не поместятся).
             int gathered = army.Count(u => u.Coord.DistanceTo(home) <= 3);
-            if (!_attacking.Contains(player.Index) && army.Count >= ArmyToAttack && gathered >= Math.Max(ArmyToAttack, army.Count / 2))
-                _attacking.Add(player.Index);
-            if (army.Count < 2) _attacking.Remove(player.Index);
+            if (!_game.AiOffensive.Contains(player.Index) && army.Count >= ArmyToAttack && gathered >= Math.Max(ArmyToAttack, army.Count / 2))
+                Do(new AiOffensiveCommand(player.Index, true));
+            if (army.Count < 2 && _game.AiOffensive.Contains(player.Index)) Do(new AiOffensiveCommand(player.Index, false));
 
             // Войны нет — армия стоит дома. Цель войны не видна — идём разведывать.
             var explore = atWar && target == null ? _game.Vision.Frontier(player.Index, army.Count > 0 ? army[0].Coord : home) : null;
             return new Plan
             {
-                Attacking = atWar && _attacking.Contains(player.Index) && (target != null || explore != null),
+                Attacking = atWar && _game.AiOffensive.Contains(player.Index) && (target != null || explore != null),
                 Target = target,
                 Explore = explore,
             };
@@ -123,7 +125,7 @@ namespace Runeterra.Core
                     item = new BuildItem(NextMilitary(player, city));
                 else if (_buildings.FirstOrDefault(b => _game.CanBuild(city, new BuildItem(b), out _) && AffordsUpkeep(player, b)) is BuildingData any)
                     item = new BuildItem(any);
-                _game.SetBuild(city, item);
+                if (item != null) Do(new SetBuildCommand(player.Index, city, item));
             }
         }
 
@@ -188,7 +190,7 @@ namespace Runeterra.Core
             var fav = Personality(player.Index).FavoriteBranch;
             var next = _game.Tech.All.Where(t => _game.Tech.IsAvailable(player, t))
                 .OrderBy(t => t.baseCost * (t.branch == fav ? 0.6f : 1f)).ThenBy(t => System.Array.IndexOf(order, t.branch)).FirstOrDefault();
-            if (next != null) _game.Tech.Choose(player, next);
+            if (next != null) Do(new ResearchCommand(player.Index, next.id));
         }
 
         /// <summary>
@@ -197,33 +199,38 @@ namespace Runeterra.Core
         /// </summary>
         private void ManageTreasury(PlayerState player)
         {
-            bool rich = player.Gold > 250 && !_game.Diplomacy.EnemiesOf(player.Index).Any();
+            int me = player.Index;
+            bool rich = player.Gold > 250 && !_game.Diplomacy.EnemiesOf(me).Any();
             // Казна переполнена — земельный налог снимаем совсем.
-            player.LandTax = player.Gold > SurplusGold && rich ? 0f : rich ? 0.05f : 0.1f;
-            player.PeopleTax = rich ? 0f : 0.05f;
-            player.LuxuryTax = 0.1f;
-            if (rich && player.Reserve < 80) { player.Gold -= 20; player.Reserve += 20; }
+            float land = player.Gold > SurplusGold && rich ? 0f : rich ? 0.05f : 0.1f;
+            float people = rich ? 0f : 0.05f;
+            float luxury = 0.1f;
+            if (rich && player.Reserve < 80) Do(new ReserveCommand(me, 20));
             // Торговый характер держит пошлину ниже — купцов больше.
-            player.Tariff = (float)System.Math.Round(0.15f - 0.1f * Personality(player.Index).Trade, 2);
+            float tariff = (float)System.Math.Round(0.15f - 0.1f * Personality(me).Trade, 2);
             // Казна ломится — пошлину и налог на роскошь снимаем: главный доход богатых стран — пошлины с караванов.
-            if (player.Gold > 3 * SurplusGold) { player.Tariff = 0f; player.LuxuryTax = 0f; }
-            if (player.Reserve < 30 && player.Gold >= 70) { player.Gold -= 10; player.Reserve += 10; }
+            if (player.Gold > 3 * SurplusGold) { tariff = 0f; luxury = 0f; }
+            if (player.Reserve < 30 && player.Gold >= 70) Do(new ReserveCommand(me, 10));
 
             // Казна в минусе или тает без запаса — поднимаем налоги (дорогие постройки отсекает AffordsUpkeep).
             if (player.Gold < 0 || (player.Gold < 100 && NetIncome(player) < 0))
             {
-                player.LandTax = 0.1f;
-                player.PeopleTax = 0.1f;
-                player.LuxuryTax = 0.1f;
+                land = 0.1f;
+                people = 0.1f;
+                luxury = 0.1f;
             }
+            if (player.LandTax != land) Do(new SetRateCommand(me, Rate.LandTax, land));
+            if (player.PeopleTax != people) Do(new SetRateCommand(me, Rate.PeopleTax, people));
+            if (player.LuxuryTax != luxury) Do(new SetRateCommand(me, Rate.LuxuryTax, luxury));
+            if (player.Tariff != tariff) Do(new SetRateCommand(me, Rate.Tariff, tariff));
 
             // Займы: берём, когда враг у ворот, а казна пуста; возвращаем при избытке золота.
             bool threatened = _game.Cities.Where(c => c.OwnerIndex == player.Index).Any(c =>
                 _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
                     .Any(u => u.IsAlive && u.MeleeStrength > 0 && u.Coord.DistanceTo(c.Coord) <= 4 && _game.Vision.IsVisible(player.Index, u.Coord)));
             char rating = _game.CreditRating(player);
-            if (threatened && player.Gold < 40 && (rating == 'A' || rating == 'B')) _game.Borrow(player);
-            else if (!threatened && player.Debt > 0 && player.Gold > 120) _game.Repay(player);
+            if (threatened && player.Gold < 40 && (rating == 'A' || rating == 'B')) Do(new TreasuryCommand(me, TreasuryAction.Borrow));
+            else if (!threatened && player.Debt > 0 && player.Gold > 120) Do(new TreasuryCommand(me, TreasuryAction.Repay));
         }
 
         /// <summary>Доход стороны за ход за вычетом содержания армии и построек (налоги и пошлины — по прошлому ходу).</summary>
@@ -254,8 +261,7 @@ namespace Runeterra.Core
             if (player.Reserve < reserveGoal)
             {
                 int put = System.Math.Min(System.Math.Min(50, reserveGoal - player.Reserve), player.Gold - SurplusGold);
-                player.Gold -= put;
-                player.Reserve += put;
+                Do(new ReserveCommand(player.Index, put));
             }
 
             var capital = _game.CapitalOf(player);
@@ -269,7 +275,7 @@ namespace Runeterra.Core
                 var seller = _game.Players.Where(p => p.Index != player.Index && !p.IsHuman && p.Gold < SurplusGold && t.CanBuy(player.Index, p.Index, good) == null &&
                                                       t.SellerAgrees(p.Index, player.Index, good))
                     .OrderBy(p => t.DealBuyCost(p.Index, good)).FirstOrDefault();
-                if (seller != null && player.Gold - t.DealBuyCost(seller.Index, good) >= SurplusGold / 2) t.Buy(player.Index, seller.Index, good);
+                if (seller != null && player.Gold - t.DealBuyCost(seller.Index, good) >= SurplusGold / 2) Do(new DealCommand(player.Index, seller.Index, good, buy: true));
             }
         }
 
@@ -281,7 +287,7 @@ namespace Runeterra.Core
                 bool threat = _game.Players.Where(p => _game.AtWar(p.Index, player.Index)).SelectMany(p => p.Units)
                     .Any(u => u.IsAlive && u.MeleeStrength > 0 && u.Coord.DistanceTo(city.Coord) <= 2 && _game.Vision.IsVisible(player.Index, u.Coord));
                 bool defended = player.Units.Any(u => u.IsAlive && GameState.CanFight(u) && u.Coord.DistanceTo(city.Coord) <= 1);
-                if (threat && !defended && city.Population >= 3) _game.Draft(city, player);
+                if (threat && !defended && city.Population >= 3) Do(new DraftCommand(player.Index, city));
             }
         }
 
@@ -294,9 +300,9 @@ namespace Runeterra.Core
                 if (spare <= 0) break;
                 // Юнитам нет места — переключаем город на постройку и выкупаем её.
                 if (city.CurrentBuild?.Unit != null && _game.SpawnSpot(city) == null && ChooseBuilding(city) is Runeterra.Economy.BuildingData b)
-                    _game.SetBuild(city, new BuildItem(b));
+                    Do(new SetBuildCommand(player.Index, city, new BuildItem(b)));
                 int cost = _game.RushCost(city);
-                if (cost > 0 && cost <= spare && _game.CanRush(city, player) == null && _game.Rush(city, player)) spare -= cost;
+                if (cost > 0 && cost <= spare && _game.CanRush(city, player) == null && Do(new RushCommand(player.Index, city))) spare -= cost;
             }
 
             var builder = _shop.FirstOrDefault(d => d.buildCharges > 0);
@@ -310,11 +316,11 @@ namespace Runeterra.Core
             {
                 var from = _game.Cities.Where(c => c.OwnerIndex == player.Index && c.Population >= 3 && FindCitySpot(player, c.Coord) != null)
                     .OrderByDescending(c => c.Population).FirstOrDefault();
-                if (from != null && _game.CanBuy(player, from, settler, out _)) _game.Buy(player, from, settler);
+                if (from != null && _game.CanBuy(player, from, settler, out _)) Do(new BuyUnitCommand(player.Index, from, settler));
             }
             if (builder != null && capital != null && NeedBuilder(player) && player.Gold >= _game.BuyCost(player, builder) + 20 &&
                 _game.CanBuy(player, capital, builder, out _))
-                _game.Buy(player, capital, builder);
+                Do(new BuyUnitCommand(player.Index, capital, builder));
 
             foreach (var city in _game.Cities.Where(c => c.OwnerIndex == player.Index).ToList())
             {
@@ -324,7 +330,7 @@ namespace Runeterra.Core
                 // Исключение — большой запас золота: его хватит на содержание надолго.
                 if (_game.IncomeOf(player) - _game.Tech.ArmyUpkeep(player) < 3 && player.Gold < 20 * (_game.Tech.ArmyUpkeep(player) + 5)) continue;
                 if (player.Gold < _game.BuyCost(player, want) + 15 || !_game.CanBuy(player, city, want, out _)) continue;
-                _game.Buy(player, city, want);
+                Do(new BuyUnitCommand(player.Index, city, want));
             }
         }
 
@@ -334,11 +340,11 @@ namespace Runeterra.Core
         {
             var spot = FindCitySpot(player, unit.Coord, unit);
             if (spot == null) return;
-            if (unit.Coord == spot.Value) { _game.FoundCity(unit); return; }
+            if (unit.Coord == spot.Value) { Do(new FoundCityCommand(player.Index, unit.Id)); return; }
             var path = _game.PathFor(unit, spot.Value);
             if (path == null) return;
-            _game.MoveUnit(unit, path);
-            if (unit.Coord == spot.Value && unit.MovesLeft > 0) _game.FoundCity(unit);
+            Move(unit, path);
+            if (unit.Coord == spot.Value && unit.MovesLeft > 0) Do(new FoundCityCommand(player.Index, unit.Id));
         }
 
         /// <summary>Лучшее место для города недалеко от from: еда, производство, берег; подальше от врага.</summary>
@@ -382,7 +388,7 @@ namespace Runeterra.Core
         /// <summary>Строитель: рынки у городов без рынка, затем дороги между своими городами.</summary>
         private void PlayBuilder(Unit unit, PlayerState player)
         {
-            if (_market != null && _game.DistrictCityFor(unit, _market, out _) != null) { _game.BuildDistrict(unit, _market); return; }
+            if (_market != null && _game.DistrictCityFor(unit, _market, out _) != null) { Do(new BuildDistrictCommand(player.Index, unit.Id, _market.id)); return; }
 
             var marketSpots = _market == null ? new List<HexCoord>() : _game.Cities
                 .Where(c => c.OwnerIndex == player.Index && !c.HasMarket)
@@ -391,22 +397,22 @@ namespace Runeterra.Core
                 .OrderBy(t => t.DistanceTo(unit.Coord)).ToList();
             if (marketSpots.Count > 0)
             {
-                GoAndDo(unit, marketSpots[0], () => _game.BuildDistrict(unit, _market));
+                GoAndDo(unit, marketSpots[0], () => Do(new BuildDistrictCommand(player.Index, unit.Id, _market.id)));
                 return;
             }
 
             var roadTile = NextRoadTile(player, unit);
             if (roadTile == null) return;
-            GoAndDo(unit, roadTile.Value, () => _game.BuildRoad(unit));
+            GoAndDo(unit, roadTile.Value, () => Do(new BuildRoadCommand(player.Index, unit.Id)));
         }
 
-        private void GoAndDo(Unit unit, HexCoord spot, System.Action action)
+        private void GoAndDo(Unit unit, HexCoord spot, System.Func<bool> action)
         {
             if (unit.Coord != spot)
             {
                 var path = _game.PathFor(unit, spot);
                 if (path == null) return;
-                _game.MoveUnit(unit, path);
+                Move(unit, path);
             }
             if (unit.Coord == spot && unit.MovesLeft > 0) action();
         }
@@ -462,7 +468,7 @@ namespace Runeterra.Core
                 .Where(c => _game.CanAttackNow(unit, c))
                 .OrderBy(c => _game.UnitAt(c)?.Health ?? _game.CityAt(c)?.Walls ?? 999)
                 .ToList();
-            if (now.Count > 0) { _game.AttackTarget(unit, now[0]); return; }
+            if (now.Count > 0) { Do(new AttackCommand(player.Index, unit.Id, now[0])); return; }
 
             // 2. Враг рядом (до 3 клеток) — вступаем в бой.
             var close = enemyUnits.Where(c => c.DistanceTo(unit.Coord) <= 3).OrderBy(c => c.DistanceTo(unit.Coord)).ToList();
@@ -479,7 +485,7 @@ namespace Runeterra.Core
             // 4а. Цели не знаем — идём разведывать.
             if (plan.Target == null)
             {
-                if (plan.Explore != null) _game.MoveUnit(unit, _game.PathFor(unit, plan.Explore.Value));
+                if (plan.Explore != null) Move(unit, _game.PathFor(unit, plan.Explore.Value));
                 return;
             }
 
@@ -493,7 +499,7 @@ namespace Runeterra.Core
                 Engage(unit, target, useField: true);
                 return;
             }
-            if (unit.Data.canCapture) _game.MoveUnit(unit, FieldPath(unit, target) ?? _game.PathFor(unit, target));
+            if (unit.Data.canCapture) Move(unit, FieldPath(unit, target) ?? _game.PathFor(unit, target));
             else Engage(unit, target, useField: true);
         }
 
@@ -556,7 +562,7 @@ namespace Runeterra.Core
         /// <summary>Атаковать цель или подойти к ней. false — если к цели нет пути.</summary>
         private bool Engage(Unit unit, HexCoord target, bool useField = false)
         {
-            if (_game.IsTarget(unit, target) && _game.AttackTarget(unit, target)) return true;
+            if (_game.IsTarget(unit, target) && Do(new AttackCommand(unit.OwnerIndex, unit.Id, target))) return true;
             List<HexCoord> approach;
             if (useField && FieldPath(unit, target) is List<HexCoord> full && full.Count > 0)
             {
@@ -565,7 +571,8 @@ namespace Runeterra.Core
             }
             else approach = _game.PathToAdjacent(unit, target);
             if (approach == null || approach.Count == 0) return false;
-            _game.MoveUnit(unit, approach, StopForRanged(unit, target));
+            if (unit.Data.IsRanged) Move(unit, approach, target, unit.Data.range); // лучник останавливается на дистанции выстрела
+            else Move(unit, approach);
             return true;
         }
 
@@ -578,18 +585,18 @@ namespace Runeterra.Core
                 {
                     var path = _game.PathFor(unit, city.Coord);
                     if (path == null) continue;
-                    _game.MoveUnit(unit, path);
+                    Move(unit, path);
                     return;
                 }
                 if (unit.Coord.DistanceTo(city.Coord) <= 3) return;
                 var approach = _game.PathToAdjacent(unit, city.Coord);
                 if (approach == null) continue;
-                _game.MoveUnit(unit, approach, c => c.DistanceTo(city.Coord) <= 3);
+                Move(unit, approach, city.Coord, 3);
                 return;
             }
             // Вражеских городов не знаем — разведка.
             var frontier = _game.Vision.Frontier(player.Index, unit.Coord);
-            if (frontier != null) _game.MoveUnit(unit, _game.PathFor(unit, frontier.Value));
+            if (frontier != null) Move(unit, _game.PathFor(unit, frontier.Value));
         }
 
         /// <summary>Идти к столице и ждать подкреплений. false — если стоять уже негде/незачем.</summary>
@@ -600,11 +607,8 @@ namespace Runeterra.Core
             if (unit.Coord.DistanceTo(capital.Coord) <= 2) return true;
             var path = FieldPath(unit, capital.Coord);
             if (path == null) return false;
-            _game.MoveUnit(unit, path, c => c.DistanceTo(capital.Coord) <= 2);
+            Move(unit, path, capital.Coord, 2);
             return true;
         }
-
-        private static System.Func<HexCoord, bool> StopForRanged(Unit unit, HexCoord target) =>
-            unit.Data.IsRanged ? c => c.DistanceTo(target) <= unit.Data.range : (System.Func<HexCoord, bool>)null;
     }
 }

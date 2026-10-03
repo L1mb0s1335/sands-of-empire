@@ -43,7 +43,7 @@ namespace Runeterra.Core
             public void C(HexCoord? c) { B(c.HasValue); if (c.HasValue) C(c.Value); }
         }
 
-        public static StateHash Of(GameState s, AiPlayer ai)
+        public static StateHash Of(GameState s)
         {
             var r = new StateHash();
 
@@ -153,7 +153,7 @@ namespace Runeterra.Core
             dip.I(d.CoalitionTarget); dip.I(d.CoalitionCooldown);
             foreach (var m in d.Coalition) dip.I(m);
             dip.I(-5);
-            if (ai != null) foreach (var a in ai.Attacking) dip.I(a);
+            foreach (var a in s.AiOffensive) dip.I(a);
             r.Diplomacy = dip.V;
 
             var trade = new H();

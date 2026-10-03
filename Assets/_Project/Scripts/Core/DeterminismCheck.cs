@@ -9,6 +9,7 @@ namespace Runeterra.Core
     /// Проверка детерминированности (autoplay с -detcheck): партии без сцены, за всех ходит ИИ,
     /// в начале каждого хода игрока печатается хеш состояния по разделам. Для каждого сида и сценария —
     /// два прогона: без перезагрузки и с сохранением/загрузкой на заданных ходах; цепочки хешей должны совпасть.
+    /// Журнал команд первого прогона (через JSON) проигрывается заново — цепочка реплея тоже должна совпасть.
     /// Аргументы: -seeds 1-20, -scenarios hist,peace, -turns 200, -reloads 10,50,150, -side palestine;
     /// -legacy &lt;файл&gt; — дополнительно старое сохранение (v3): дважды загрузить и сыграть -legacyturns ходов, цепочки должны совпасть.
     /// </summary>
@@ -53,14 +54,14 @@ namespace Runeterra.Core
         {
             var human = s.Turns.Current;
             foreach (var p in s.Diplomacy.Proposals.ToList())
-                s.Diplomacy.Answer(p, human.Index, ai.Accepts(human.Index, p.From, p.Kind));
+                s.Commands.Execute(new AnswerProposalCommand(human.Index, p.From, p.Kind, ai.Accepts(human.Index, p.From, p.Kind)));
             ai.PlayTurn(human);
-            s.Turns.EndTurn();
+            s.Commands.Execute(new EndTurnCommand(human.Index));
         }
 
         /// <summary>Партия до конца срока; на ходах из reloads — сохранение в JSON и загрузка в новое состояние.</summary>
         private static List<(int turn, StateHash hash)> Play(GameController game, GameSetup setup, int turns, ICollection<int> reloads,
-            bool print, List<string> problems)
+            bool print, List<string> problems, List<ICommand> journal = null)
         {
             var (s, ai) = game.CreateHeadless(setup);
             var chain = new List<(int, StateHash)>();
@@ -69,19 +70,31 @@ namespace Runeterra.Core
                 int turn = s.Turns.Turn;
                 if (reloads.Contains(turn) && s.Winner == null)
                 {
-                    var before = StateHash.Of(s, ai);
-                    var json = SaveSystem.ToJson(SaveSystem.Capture(s, ai));
+                    var before = StateHash.Of(s);
+                    var json = SaveSystem.ToJson(SaveSystem.Capture(s));
                     (s, ai) = game.CreateHeadless(setup, JsonUtility.FromJson<SaveSystem.SaveData>(json));
-                    var after = StateHash.Of(s, ai);
+                    var after = StateHash.Of(s);
                     if (!after.Equals(before))
                         problems.Add($"{Short(setup.Scenario)} сид {setup.Seed}: состояние после загрузки на ходу {turn} отличается ({before.DiffSections(after)})");
                 }
-                var h = StateHash.Of(s, ai);
+                var h = StateHash.Of(s);
                 chain.Add((turn, h));
                 if (print) Debug.Log($"[HASH] {Short(setup.Scenario)} seed={setup.Seed} turn={turn} {h}");
                 if (s.Winner != null || turn > turns) break;
                 PlayRound(s, ai);
             }
+            journal?.AddRange(s.Commands.Journal);
+            return chain;
+        }
+
+        /// <summary>Реплей журнала с начала партии: хеш в начале каждого хода человека.</summary>
+        private static List<(int turn, StateHash hash)> Replay(GameController game, GameSetup setup, List<ICommand> journal, out string error)
+        {
+            var replay = new CommandReplay(journal);
+            game.CreateHeadless(setup, null, replay);
+            var chain = new List<(int, StateHash)>();
+            replay.Run(s => chain.Add((s.Turns.Turn, StateHash.Of(s))));
+            error = replay.Error;
             return chain;
         }
 
@@ -94,7 +107,7 @@ namespace Runeterra.Core
             int end = s.Turns.Turn + turns;
             while (true)
             {
-                var h = StateHash.Of(s, ai);
+                var h = StateHash.Of(s);
                 chain.Add((s.Turns.Turn, h));
                 if (s.Winner != null || s.Turns.Turn >= end) break;
                 PlayRound(s, ai);
@@ -126,14 +139,22 @@ namespace Runeterra.Core
             {
                 var setup = new GameSetup { Scenario = scenario, HumanRegion = o.Side, TurnLimit = o.Turns, Seed = seed };
                 int before = problems.Count;
-                var plain = Play(game, setup, o.Turns, new int[0], true, problems);
+                var journal = new List<ICommand>();
+                var plain = Play(game, setup, o.Turns, new int[0], true, problems, journal);
+                yield return null;
+                // Журнал — через JSON: команды должны быть только данными.
+                var restored = CommandBus.FromJson(CommandBus.ToJson(journal));
+                var replayed = Replay(game, setup, restored, out var replayError);
+                if (replayError != null) problems.Add($"{Short(scenario)} сид {seed}: реплей остановился — {replayError}");
+                var replayDiff = Compare(plain, replayed);
+                if (replayDiff != null) problems.Add($"{Short(scenario)} сид {seed}: реплей журнала ({journal.Count} команд) расходится — {replayDiff}");
                 yield return null;
                 var reloaded = Play(game, setup, o.Turns, o.Reloads, false, problems);
-                runs += 2;
+                runs += 3;
                 var diff = Compare(plain, reloaded);
                 if (diff != null) problems.Add($"{Short(scenario)} сид {seed}: цепочка с перезагрузками расходится — {diff}");
                 var last = plain[plain.Count - 1];
-                Debug.Log($"[DETCHECK] {Short(scenario)} seed={seed}: ходов {last.turn}, перезагрузки {string.Join("/", o.Reloads)} — " +
+                Debug.Log($"[DETCHECK] {Short(scenario)} seed={seed}: ходов {last.turn}, команд {journal.Count}, реплей и перезагрузки {string.Join("/", o.Reloads)} — " +
                           (problems.Count == before ? "цепочки совпали" : "РАСХОЖДЕНИЕ") + $", итог {last.hash.Total:x16}, {sw.Elapsed.TotalSeconds:0} с");
                 yield return null;
             }

@@ -23,12 +23,12 @@ namespace Runeterra.Core
     public class Relation
     {
         /// <summary>Мнение −100…+100.</summary>
-        public int Value;
-        public Stance Stance;
+        public int Value { get; internal set; }
+        public Stance Stance { get; internal set; }
         /// <summary>До какого хода действует перемирие или пакт.</summary>
-        public int Until;
+        public int Until { get; internal set; }
         /// <summary>Ход начала войны (для усталости и мирных переговоров).</summary>
-        public int Since;
+        public int Since { get; internal set; }
     }
 
     /// <summary>
@@ -37,10 +37,10 @@ namespace Runeterra.Core
     /// </summary>
     public class Claim
     {
-        public int Owner;
-        public string CityId;
-        public int ReadyTurn;
-        public bool Historical;
+        public int Owner { get; internal set; }
+        public string CityId { get; internal set; }
+        public int ReadyTurn { get; internal set; }
+        public bool Historical { get; internal set; }
     }
 
     public enum ProposalKind
@@ -54,9 +54,9 @@ namespace Runeterra.Core
     /// <summary>Предложение ИИ игроку (ждёт ответа в окне «Дипломатия»).</summary>
     public class Proposal
     {
-        public int From;
-        public ProposalKind Kind;
-        public int Turn;
+        public int From { get; internal set; }
+        public ProposalKind Kind { get; internal set; }
+        public int Turn { get; internal set; }
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ namespace Runeterra.Core
             Christian.Contains(_game.Players[a].Region.id) == Christian.Contains(_game.Players[b].Region.id);
 
         /// <summary>Сценарий без войн: объявить войну нельзя никому.</summary>
-        public bool WarsDisabled { get; set; }
+        public bool WarsDisabled { get; internal set; }
 
         public event Action Changed;
 

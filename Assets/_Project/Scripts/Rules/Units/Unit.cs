@@ -12,7 +12,7 @@ namespace Runeterra.Units
         public int OwnerIndex { get; }
         public HexCoord Coord { get; private set; }
         public int MovesLeft { get; private set; }
-        public int Health { get; set; }
+        public int Health { get; internal set; }
         public int BuildCharges { get; private set; }
         /// <summary>Юнит израсходован (строитель), а не погиб в бою.</summary>
         public bool Consumed { get; private set; }
@@ -30,9 +30,9 @@ namespace Runeterra.Units
         public string LevelName => Level switch { 2 => "Элита", 1 => "Ветеран", _ => "Новобранец" };
 
         /// <summary>Дополнительная сила от лидера региона и т.п. (задаётся правилами игры).</summary>
-        public int BonusStrength { get; set; }
+        public int BonusStrength { get; internal set; }
         /// <summary>Прибавка к силе только при атаке (способность лидера).</summary>
-        public int AttackBonus { get; set; }
+        public int AttackBonus { get; internal set; }
 
         /// <summary>Сила в ближнем бою с учётом опыта (0 у мирных юнитов).</summary>
         public int MeleeStrength => Data.strength > 0 ? Data.strength + Level * StrengthPerLevel + BonusStrength : 0;
@@ -96,7 +96,7 @@ namespace Runeterra.Units
         }
 
         /// <summary>Прибавка к движению (способность лидера); задаётся правилами при появлении юнита.</summary>
-        public int MovementBonus { get; set; }
+        public int MovementBonus { get; internal set; }
 
         public int MaxMoves => Data.movement + MovementBonus;
 

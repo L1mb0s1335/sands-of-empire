@@ -29,14 +29,22 @@ namespace Runeterra.Core
         public Visibility Vision { get; }
         public Diplomacy Diplomacy { get; }
 
+        /// <summary>Шина команд: все действия сторон (игрока и ИИ) идут через неё.</summary>
+        public CommandBus Commands { get; }
+
+        /// <summary>Стороны ИИ, чьи армии сейчас в наступлении (память ИИ, часть состояния партии).</summary>
+        public SortedSet<int> AiOffensive { get; } = new SortedSet<int>();
+
         /// <summary>Сценарий и длина партии (после TurnLimit — подсчёт очков).</summary>
         public Scenario Scenario { get; private set; } = Scenario.Historical1187;
         public int TurnLimit { get; private set; } = 200;
 
-        public void Configure(Scenario scenario, int turnLimit)
+        /// <summary>Настройки новой партии (до первого хода): сценарий, срок, сид партии.</summary>
+        public void Configure(Scenario scenario, int turnLimit, int seed)
         {
             Scenario = scenario;
             TurnLimit = turnLimit;
+            GameSeed = seed;
             Diplomacy.WarsDisabled = scenario == Scenario.PeacefulDevelopment;
         }
 
@@ -164,7 +172,8 @@ namespace Runeterra.Core
             Vision = new Visibility(this);
             Diplomacy = new Diplomacy(this);
             GameSeed = grid.Seed;
-            Turns = new TurnManager(players, aiTurn);
+            Turns = new TurnManager(players);
+            Commands = new CommandBus(this, aiTurn);
             Turns.PlayerTurnStarted += BeginPlayerTurn;
             RoadsChanged += Trade.ClearRouteCache;
             CityFounded += _ => Trade.ClearRouteCache();
@@ -176,6 +185,14 @@ namespace Runeterra.Core
         }
 
         // ---------- Запросы ----------
+
+        /// <summary>Начало новой партии: первый ход, ходы ИИ до первого хода человека, обзор.</summary>
+        public void StartNewGame()
+        {
+            Turns.Start();
+            Commands.RunAiTurns();
+            Vision.RefreshAll();
+        }
 
         public Unit UnitAt(HexCoord c) => Turns.UnitAt(c);
 
@@ -1393,6 +1410,11 @@ namespace Runeterra.Core
             unit.BonusStrength += bonus;
             Message?.Invoke($"{city.Data.displayName}: {unit.Data.displayName} получает оружие со склада (+{bonus} к силе)");
         }
+
+        /// <summary>Юнит контента по id: из лавки или стартовых отрядов сторон.</summary>
+        public UnitData FindUnitData(string id) =>
+            Shop.FirstOrDefault(u => u != null && u.id == id) ??
+            Players.SelectMany(p => p.Region.startingUnits).FirstOrDefault(u => u != null && u.id == id);
 
         public Unit Spawn(UnitData data, PlayerState player, HexCoord coord)
         {

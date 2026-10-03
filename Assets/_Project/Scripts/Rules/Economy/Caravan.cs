@@ -21,8 +21,8 @@ namespace Runeterra.Economy
         public bool BySea { get; }
         public List<HexCoord> Path { get; }
         /// <summary>Индекс в пути; -1 — ещё в городе отправления.</summary>
-        public int Position { get; set; } = -1;
-        public int StalledTurns { get; set; }
+        public int Position { get; internal set; } = -1;
+        public int StalledTurns { get; internal set; }
         /// <summary>Цена покупки в городе отправления (для отчёта о прибыли).</summary>
         public float BuyPrice { get; }
 

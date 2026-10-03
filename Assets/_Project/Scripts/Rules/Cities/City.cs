@@ -9,7 +9,7 @@ namespace Runeterra.Cities
     {
         public CityData Data { get; }
         public HexCoord Coord { get; }
-        public int OwnerIndex { get; set; }
+        public int OwnerIndex { get; internal set; }
         /// <summary>Регион, который основал город (для «столицы противника»).</summary>
         public int FounderIndex { get; internal set; }
         public bool IsCapital => Data.isCapital;
@@ -18,11 +18,11 @@ namespace Runeterra.Cities
         public SortedSet<HexCoord> Territory { get; } = new SortedSet<HexCoord>(ContentOrder.Coords);
 
         /// <summary>Клетка рынка или null.</summary>
-        public HexCoord? MarketCoord { get; set; }
+        public HexCoord? MarketCoord { get; internal set; }
         public bool HasMarket => MarketCoord != null;
 
         /// <summary>Клетка порта или null. Порт открывает морские пути и заморскую торговлю.</summary>
-        public HexCoord? PortCoord { get; set; }
+        public HexCoord? PortCoord { get; internal set; }
         public bool HasPort => PortCoord != null;
 
         // ---------- Стены ----------
@@ -63,11 +63,11 @@ namespace Runeterra.Cities
 
         // ---------- Рост и производство ----------
 
-        public int Population { get; set; }
-        public int FoodStock { get; set; }
-        public int ProductionStock { get; set; }
+        public int Population { get; internal set; }
+        public int FoodStock { get; internal set; }
+        public int ProductionStock { get; internal set; }
         /// <summary>Что строится: юнит или район. null — ничего.</summary>
-        public BuildItem CurrentBuild { get; set; }
+        public BuildItem CurrentBuild { get; internal set; }
 
         // ---------- Склад и постройки ----------
 
@@ -107,18 +107,18 @@ namespace Runeterra.Cities
         }
 
         /// <summary>Стоимость сырья, добытого в последний ход (база земельного налога).</summary>
-        public float LastRawValue { get; set; }
+        public float LastRawValue { get; internal set; }
         /// <summary>Стоимость потреблённой роскоши в последний ход (база налога на роскошь).</summary>
-        public float LastLuxuryValue { get; set; }
+        public float LastLuxuryValue { get; internal set; }
         /// <summary>В последний ход был неурожай (болезнь или нехватка зерна в засуху).</summary>
-        public bool BadHarvest { get; set; }
+        public bool BadHarvest { get; internal set; }
 
         /// <summary>Текущая ступень поселения (пересчитывается каждый ход владельца).</summary>
-        public SettlementTier Tier { get; set; }
-        public int TierFailTurns { get; set; }
+        public SettlementTier Tier { get; internal set; }
+        public int TierFailTurns { get; internal set; }
 
         /// <summary>Ход, раньше которого нельзя снова призывать ополчение.</summary>
-        public int DraftCooldownUntil { get; set; }
+        public int DraftCooldownUntil { get; internal set; }
 
         /// <summary>Болезнь урожая: товар → сколько ходов ещё вдвое меньше добыча.</summary>
         public SortedDictionary<GoodData, int> Blights { get; } = new SortedDictionary<GoodData, int>(ContentOrder.Goods);

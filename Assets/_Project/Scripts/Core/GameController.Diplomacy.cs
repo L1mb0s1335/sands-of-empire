@@ -79,8 +79,8 @@ namespace Runeterra.Core
                 Fill(row, new Color(0.95f, 0.85f, 0.55f, 0.35f));
                 Label(new Rect(row.x + 10, row.y + 6, row.width - 260, 24),
                     $"<b>{from.Region.displayName}</b> ({from.Region.leaderName}) предлагает: <b>{Diplomacy.KindName(p.Kind)}</b>", Body);
-                if (Button(new Rect(row.xMax - 244, row.y + 3, 118, 28), "Принять")) d.Answer(p, human.Index, true);
-                if (Button(new Rect(row.xMax - 120, row.y + 3, 118, 28), "Отклонить")) d.Answer(p, human.Index, false);
+                if (Button(new Rect(row.xMax - 244, row.y + 3, 118, 28), "Принять")) Do(new AnswerProposalCommand(human.Index, p.From, p.Kind, true));
+                if (Button(new Rect(row.xMax - 120, row.y + 3, 118, 28), "Отклонить")) Do(new AnswerProposalCommand(human.Index, p.From, p.Kind, false));
                 y += 38;
             }
             Fill(new Rect(r.x + pad, y + 2, r.width - pad * 2, 1), GoldLine);
@@ -149,7 +149,7 @@ namespace Runeterra.Core
                 var reason = d.CanDeclareWar(me, o);
                 var b = new Rect(x, y1, bw * 2 + 4, bh);
                 GUI.enabled = reason == null;
-                if (Button(b, reason == null ? "<color=#a3321e><b>Объявить войну</b></color>" : "Объявить войну")) d.DeclareWar(me, o);
+                if (Button(b, reason == null ? "<color=#a3321e><b>Объявить войну</b></color>" : "Объявить войну")) Do(new DeclareWarCommand(me, o));
                 GUI.enabled = true;
                 Tip(b, reason ?? $"Повод — претензия. Их союзники вступят в войну: {string.Join(", ", d.AlliesOf(o).Select(a => Players[a].Region.displayName).DefaultIfEmpty("нет"))}");
             }
@@ -157,7 +157,7 @@ namespace Runeterra.Core
             var cr = new Rect(x + bw * 2 + 8, y1, bw, bh);
             string claimReason = target == null ? "нет города в пределах досягаемости" : d.CanFabricate(me, target);
             GUI.enabled = claimReason == null;
-            if (Button(cr, "Претензия")) d.Fabricate(me, target);
+            if (Button(cr, "Претензия") && target != null) Do(new ClaimCommand(me, target));
             GUI.enabled = true;
             Tip(cr, target == null ? claimReason
                 : claimReason ?? $"Заявить права на {target.Data.displayName} за {Diplomacy.ClaimCost} золота; созреет через {Diplomacy.ClaimMaturity} х. Их мнение −15");
@@ -181,7 +181,7 @@ namespace Runeterra.Core
             var br = new Rect(x + bw * 2 + 8, y2, bw, bh);
             bool treaty = stance == Stance.NonAggression || stance == Stance.Alliance;
             GUI.enabled = treaty;
-            if (Button(br, "Разорвать")) d.BreakTreaty(me, o);
+            if (Button(br, "Разорвать")) Do(new BreakTreatyCommand(me, o));
             GUI.enabled = true;
             Tip(br, treaty ? "Разорвать договор: мнение −30" : "договора нет");
         }
@@ -240,7 +240,7 @@ namespace Runeterra.Core
                 var ar = new Rect(x, y1, bw * 2 + 4, bh);
                 if (t.HasAgreement(me, o))
                 {
-                    if (Button(ar, "Расторгнуть соглашение")) t.CancelAgreement(me, o, "решение правителя");
+                    if (Button(ar, "Расторгнуть соглашение")) Do(new CancelAgreementCommand(me, o, "решение правителя"));
                     Tip(ar, "Караваны между вами будут конфискованы на границе");
                 }
                 else
@@ -254,7 +254,7 @@ namespace Runeterra.Core
                 var er = new Rect(x, y2, bw * 2 + 4, bh);
                 bool mine = t.Embargoes(me, o);
                 GUI.enabled = !State.AtWar(me, o) || mine;
-                if (Button(er, mine ? "Снять эмбарго" : "Эмбарго")) t.SetEmbargo(me, o, !mine);
+                if (Button(er, mine ? "Снять эмбарго" : "Эмбарго")) Do(new EmbargoCommand(me, o, !mine));
                 GUI.enabled = true;
                 Tip(er, mine ? "Снова пропускать их товары" : "Закрыть границу для их товаров: соглашение рвётся, мнение −15");
 
@@ -262,13 +262,13 @@ namespace Runeterra.Core
                 var br = new Rect(x + bw * 2 + 8, y1, bw * 2 + 4, bh);
                 var buyReason = capital == null ? "нет столицы" : t.CanBuy(me, o, good) ?? (t.SellerAgrees(o, me, good) ? null : "не продают: им самим нужно");
                 GUI.enabled = buyReason == null;
-                if (Button(br, $"Купить за {t.DealBuyCost(o, good)}")) t.Buy(me, o, good);
+                if (Button(br, $"Купить за {t.DealBuyCost(o, good)}")) Do(new DealCommand(me, o, good, buy: true));
                 GUI.enabled = true;
                 Tip(br, buyReason ?? $"Купить {TradeSystem.DealAmount} × {good.displayName} с их столичного склада");
                 var sr = new Rect(x + bw * 2 + 8, y2, bw * 2 + 4, bh);
                 var sellReason = capital == null ? "нет столицы" : t.CanSell(me, o, good) ?? (t.BuyerAgrees(o, me, good) ? null : "им не нужно: у них дёшево");
                 GUI.enabled = sellReason == null;
-                if (Button(sr, $"Продать за {t.DealSellGain(o, good)}")) t.Sell(me, o, good);
+                if (Button(sr, $"Продать за {t.DealSellGain(o, good)}")) Do(new DealCommand(me, o, good, buy: false));
                 GUI.enabled = true;
                 Tip(sr, sellReason ?? $"Продать {TradeSystem.DealAmount} × {good.displayName} из своей столицы");
 

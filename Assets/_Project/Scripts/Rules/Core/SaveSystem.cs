@@ -195,7 +195,7 @@ namespace Runeterra.Core
 
         private static List<HexCoord> Sorted(IEnumerable<HexCoord> coords) => coords.OrderBy(c => c.q).ThenBy(c => c.r).ToList();
 
-        public static SaveData Capture(GameState s, AiPlayer ai)
+        public static SaveData Capture(GameState s)
         {
             var d = new SaveData
             {
@@ -280,7 +280,7 @@ namespace Runeterra.Core
                 .Select(kv => new GoodAmount { id = kv.Key.id, amount = kv.Value }).ToList();
             d.yearExport = s.Trade.YearExport.OrderBy(kv => kv.Key.Item1).ThenBy(kv => kv.Key.Item2.id)
                 .Select(kv => new YearExportSave { owner = kv.Key.Item1, good = kv.Key.Item2.id, amount = kv.Value }).ToList();
-            d.aiAttacking = ai.Attacking.OrderBy(x => x).ToList();
+            d.aiAttacking = s.AiOffensive.ToList();
             d.relations = s.Diplomacy.All.OrderBy(x => x.key.Item1).ThenBy(x => x.key.Item2)
                 .Select(x => new RelationSave { a = x.key.Item1, b = x.key.Item2, value = x.rel.Value, stance = (int)x.rel.Stance, until = x.rel.Until, since = x.rel.Since })
                 .ToList();
@@ -297,9 +297,9 @@ namespace Runeterra.Core
 
         public static string ToJson(SaveData d) => JsonUtility.ToJson(d);
 
-        public static void Save(GameState s, AiPlayer ai)
+        public static void Save(GameState s)
         {
-            var json = ToJson(Capture(s, ai));
+            var json = ToJson(Capture(s));
             var tmp = SavePath + ".tmp";
             File.WriteAllText(tmp, json);
             if (File.Exists(SavePath)) File.Delete(SavePath);
@@ -337,7 +337,7 @@ namespace Runeterra.Core
         /// Восстановить партию в свежесозданный GameState (игроки уже созданы по регионам карты,
         /// городов и юнитов ещё нет). Юниты появляются через событие UnitCreated.
         /// </summary>
-        public static void Apply(SaveData d, GameState s, AiPlayer ai, Content content)
+        public static void Apply(SaveData d, GameState s, Content content)
         {
             foreach (var t in d.tiles)
             {
@@ -448,7 +448,7 @@ namespace Runeterra.Core
                 if (Good(e.id) is GoodData g) s.Trade.ExportPressure[g] = e.amount;
             foreach (var e in d.yearExport)
                 if (Good(e.good) is GoodData g) s.Trade.YearExport[(e.owner, g)] = e.amount;
-            ai.Attacking.UnionWith(d.aiAttacking);
+            s.AiOffensive.UnionWith(d.aiAttacking);
             foreach (var r in d.relations)
                 s.Diplomacy.Set(r.a, r.b, new Relation { Value = r.value, Stance = (Stance)r.stance, Until = r.until, Since = r.since });
             foreach (var c in d.claims)

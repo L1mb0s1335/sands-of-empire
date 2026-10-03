@@ -53,9 +53,7 @@ namespace Runeterra.Core
             int turn = _game.Turns.Turn;
 
             // Набожность: раз в 5 ходов теплеет к единоверцам и холодеет к иноверцам.
-            if (ch.Piety >= 0.7f && turn % 5 == me % 5)
-                foreach (var other in _game.Players.Where(p => p.Index != me))
-                    d.AddOpinion(me, other.Index, d.SameFaith(me, other.Index) ? 1 : -1);
+            if (ch.Piety >= 0.7f && turn % 5 == me % 5) Do(new PietyCommand(me));
 
             if (d.WarsDisabled)
             {
@@ -91,11 +89,11 @@ namespace Runeterra.Core
                     // Вероломный правитель рвёт пакт, чтобы через ход напасть.
                     if (d.StanceOf(me, target) == Stance.NonAggression && ch.Trust < 0.45f && BlocStrength(me) >= BlocStrength(target) * (ratio + 0.3f))
                     {
-                        d.BreakTreaty(me, target);
+                        Do(new BreakTreatyCommand(me, target));
                         break;
                     }
                     if (d.CanDeclareWar(me, target) != null) continue;
-                    d.DeclareWar(me, target);
+                    Do(new DeclareWarCommand(me, target));
                     break;
                 }
             }
@@ -115,7 +113,7 @@ namespace Runeterra.Core
                     .ThenBy(c => Strength(c.OwnerIndex) + d.Opinion(me, c.OwnerIndex))
                     .ThenBy(c => mine.Min(m => m.Coord.DistanceTo(c.Coord)))
                     .FirstOrDefault();
-                if (pick != null) d.Fabricate(me, pick);
+                if (pick != null) Do(new ClaimCommand(me, pick));
             }
 
             SeekTreaties(player);
@@ -138,12 +136,12 @@ namespace Runeterra.Core
                 int opinion = d.Opinion(me, o);
                 var ch = Personality(me);
                 int embargoAt = -80 + (int)(40 * (1f - ch.Trade));
-                if (!t.Embargoes(me, o) && opinion <= embargoAt && !d.AtWar(me, o)) t.SetEmbargo(me, o, true);
-                else if (t.Embargoes(me, o) && opinion > embargoAt + 30) t.SetEmbargo(me, o, false);
+                if (!t.Embargoes(me, o) && opinion <= embargoAt && !d.AtWar(me, o)) Do(new EmbargoCommand(me, o, true));
+                else if (t.Embargoes(me, o) && opinion > embargoAt + 30) Do(new EmbargoCommand(me, o, false));
                 if (t.CanSignAgreement(me, o) == null && opinion >= 10 - (int)(30 * ch.Trade) && _game.Roll(DetRandom.Kind.AiTradeAgreement, me, o) < 0.1 + 0.3 * ch.Trade)
                 {
-                    if (other.IsHuman) d.Propose(me, o, ProposalKind.TradeAgreement);
-                    else if (Accepts(o, me, ProposalKind.TradeAgreement)) t.SignAgreement(me, o);
+                    if (other.IsHuman) Do(new ProposeCommand(me, o, ProposalKind.TradeAgreement));
+                    else if (Accepts(o, me, ProposalKind.TradeAgreement)) Do(new TreatyCommand(me, o, ProposalKind.TradeAgreement));
                 }
             }
 
@@ -154,7 +152,7 @@ namespace Runeterra.Core
                 if (capital.Warehouse.Get(good) >= 4) continue;
                 var seller = _game.Players.Where(p => p.Index != me && !p.IsHuman && t.CanBuy(me, p.Index, good) == null && t.SellerAgrees(p.Index, me, good))
                     .OrderBy(p => t.DealBuyCost(p.Index, good)).FirstOrDefault();
-                if (seller != null && player.Gold >= t.DealBuyCost(seller.Index, good) + 40) t.Buy(me, seller.Index, good);
+                if (seller != null && player.Gold >= t.DealBuyCost(seller.Index, good) + 40) Do(new DealCommand(me, seller.Index, good, buy: true));
             }
         }
 
@@ -176,8 +174,8 @@ namespace Runeterra.Core
         private void OfferPeace(int me, int enemy)
         {
             var d = _game.Diplomacy;
-            if (_game.Players[enemy].IsHuman) d.Propose(me, enemy, ProposalKind.Peace);
-            else if (Accepts(enemy, me, ProposalKind.Peace)) d.MakePeace(me, enemy);
+            if (_game.Players[enemy].IsHuman) Do(new ProposeCommand(me, enemy, ProposalKind.Peace));
+            else if (Accepts(enemy, me, ProposalKind.Peace)) Do(new TreatyCommand(me, enemy, ProposalKind.Peace));
         }
 
         /// <summary>Пакты с соседями, к которым расположен; союз при высоком мнении (в коалиции — легче).</summary>
@@ -198,12 +196,8 @@ namespace Runeterra.Core
                     : d.StanceOf(me, o) == Stance.Peace && d.CanSignPact(me, o) == null && d.Opinion(me, o) >= 10 - (int)(20 * ch.Caution) ? ProposalKind.NonAggression
                     : (ProposalKind?)null;
                 if (kind == null) continue;
-                if (other.IsHuman) d.Propose(me, o, kind.Value);
-                else if (Accepts(o, me, kind.Value))
-                {
-                    if (kind == ProposalKind.Alliance) d.Ally(me, o);
-                    else d.SignPact(me, o);
-                }
+                if (other.IsHuman) Do(new ProposeCommand(me, o, kind.Value));
+                else if (Accepts(o, me, kind.Value)) Do(new TreatyCommand(me, o, kind.Value));
                 return;
             }
         }
@@ -233,23 +227,15 @@ namespace Runeterra.Core
             }
         }
 
-        /// <summary>Игрок предлагает ИИ договор: принять сразу или отказать.</summary>
+        /// <summary>Игрок предлагает ИИ договор: ИИ принимает сразу (договор — команда игрока) или отказывает.</summary>
         public bool AnswerHuman(int human, int ai, ProposalKind kind)
         {
-            var d = _game.Diplomacy;
             if (!Accepts(ai, human, kind))
             {
                 _game.Report($"{_game.Players[ai].Region.displayName} отклоняет предложение: {Diplomacy.KindName(kind)}");
                 return false;
             }
-            switch (kind)
-            {
-                case ProposalKind.Peace: d.MakePeace(human, ai); break;
-                case ProposalKind.NonAggression: d.SignPact(human, ai); break;
-                case ProposalKind.TradeAgreement: _game.Trade.SignAgreement(human, ai); break;
-                default: d.Ally(human, ai); break;
-            }
-            return true;
+            return Do(new TreatyCommand(human, ai, kind));
         }
     }
 }

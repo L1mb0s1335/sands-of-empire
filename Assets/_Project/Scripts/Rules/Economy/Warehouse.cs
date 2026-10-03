@@ -11,8 +11,8 @@ namespace Runeterra.Economy
 
         private readonly SortedDictionary<GoodData, float> _stock = new SortedDictionary<GoodData, float>(ContentOrder.Goods);
 
-        public int Capacity { get; set; } = BaseCapacity;
-        public float SpoilageMultiplier { get; set; } = 1f;
+        public int Capacity { get; internal set; } = BaseCapacity;
+        public float SpoilageMultiplier { get; internal set; } = 1f;
 
         public IEnumerable<KeyValuePair<GoodData, float>> Items => _stock.Where(kv => kv.Value > 0.001f);
 
